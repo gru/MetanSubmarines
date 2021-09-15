@@ -21,6 +21,9 @@ type Vehicle =
         health:Health
         color: ConsoleColor
     }
+type Movable<'T> =
+    | Movable of 'T
+    | Blocked of 'T
 type GameCommand =
     | Move of VehicleId * Direction
     | Fire of VehicleId * Direction
@@ -31,9 +34,19 @@ type Game =
       vehicles:Vehicle list
       size: Size
     }
-type Movable<'T> =
-    | Movable of 'T
-    | Blocked of 'T
+type UserId = int
+type AreaEvent =
+    | UserJoined of int
+    | UserLeft
+type AreaCommand =
+    | Join
+    | Leave of int
+    | GameCommand of GameCommand
+type Area =
+    {
+        users: UserId list
+        commands: GameCommand list
+    }
     
 let move dir (x, y) =
     match dir with
@@ -56,10 +69,7 @@ module Option =
 
 module List =
     let any f vs =
-        List.fold (fun r v -> r || (f v)) false vs
-        
-    let all f vs  =
-        List.fold (fun r v -> r && (f v)) true vs
+        vs |> List.tryFind f |> Option.isSome  
         
 module Bullet =
     let moveBullet (b:Bullet) =
@@ -176,7 +186,34 @@ module Game =
                      |> List.choose id
             tick { game with bullets = bs; vehicles = vs } rest
         | [] -> game
-    
+        
+    let getRandomPosition (Size(w, h)) =
+        let r = Random()
+        (r.Next(0, w), r.Next(0, h))
+        
+    let getRandomColor () =
+        let r = Random()
+        let ns = Enum.GetNames(typeof<ConsoleColor>)
+        Enum.Parse<ConsoleColor>(ns.[r.Next(0, ns.Length - 1)]) 
+        
+    let remVehicle id vs =
+        vs |> List.filter (fun v -> not (v.id = id))
+        
+    let addVehicle id size vs =
+        let cr = getRandomColor()
+        let px = getRandomPosition size
+        let vx = { id = id; dmg = 1; health = 9; pos = px; color = cr }
+        vx::vs
+        
+module Area =
+    let addUser us =
+        if not (us |> List.isEmpty)
+        then us |> List.max |> (+) 1
+        else 1
+
+    let remUser (u:UserId) (us:UserId list) =
+        us |> List.filter (fun ux -> not (ux = u))
+
 let print (game:Game) (prev: Game) =
     for v in prev.vehicles do
         Console.SetCursorPosition v.pos
@@ -194,66 +231,98 @@ let print (game:Game) (prev: Game) =
         Console.SetCursorPosition b.pos
         Console.Write '.'
     Console.ForegroundColor <- color
-         
-let rec area (m:Actor<GameCommand>) =
-    m.ScheduleRepeatedly
-        TimeSpan.Zero (TimeSpan.FromSeconds 0.1) m.Self Tick |> ignore
+        
+let rec client (m:Actor<AreaEvent>) =
+    let rec connecting() = actor {
+        let! message = m.Receive()
+        match message with
+            | UserJoined(id) -> return! connected(id)
+            | _ -> ignored()
+        }
+    and connected id = 
+        actor {
+            let! message = m.Receive()
+            match message with
+            | UserLeft -> 
+                return! stop()
+            | _ -> ignored()
+        }
+    connecting()
     
-    let rec loop prev cs = actor {
+         
+let rec area (m:Actor<AreaCommand>) =
+    m.ScheduleRepeatedly
+        TimeSpan.Zero (TimeSpan.FromSeconds 0.1) m.Self (GameCommand Tick) |> ignore
+    
+    let rec loop area game = actor {
+        let getClientPath id = $"client_{id}"
         let! command = m.Receive ()
         match command with
-        | Tick ->
-            let cur = Game.tick prev (Tick :: cs)
-            print cur prev
-            return! loop(cur) []
-        | c ->
-            return! loop(prev) (c :: cs)
+        | GameCommand Tick ->
+            let gx = Game.tick game (Tick :: area.commands)
+            return! loop({ area with commands = [] }) gx
+        | GameCommand cmd ->
+            return! loop({ area with commands = cmd::area.commands }) game
+        | Join ->
+            let id = area.users |> Area.addUser
+            let vx = game.vehicles |> Game.addVehicle id game.size
+            let childRef = spawn m (getClientPath id) (props client)
+            childRef <! UserJoined id
+            return! loop({area with users = id::area.users }) { game with vehicles = vx }
+        | Leave id ->
+            let ux = area.users |> Area.remUser id
+            let vx = game.vehicles |> Game.remVehicle id
+            let childRef = select m (getClientPath id)
+            childRef <! UserLeft
+            return! loop({area with users = ux }) { game with vehicles = vx }
     }
-    loop { bullets = []
-           vehicles = [ { id = 1; pos = (0, 0); dmg = 1; health = 9; color = ConsoleColor.Red }
-                        { id = 2; pos = (10, 10); dmg = 1; health = 9; color = ConsoleColor.Blue } ]
+    loop { users = []
+           commands = [] }
+         { bullets = []
+           vehicles = []
            size = Size(50, 25) }
-         []
-            
-let clearInputChar () =
-    Console.SetCursorPosition (Console.CursorLeft - 1, Console.CursorTop)
-    Console.Write ' '
-            
+
 [<EntryPoint>] 
 let main _ =
-    let system = System.create "system" <| Configuration.defaultConfig()
-    let area = spawn system "area" <| props(area)
-
+    let server = System.create "system" <| Configuration.defaultConfig()
+    let area = spawn server "area" <| props(area)
+    
     Console.Clear()
     Console.CursorVisible <- false
 
     let mutable info = Console.ReadKey();
     while (not <| info.Key.Equals(ConsoleKey.E)) do
+        let clearInputChar () =
+            Console.SetCursorPosition (Console.CursorLeft - 1, Console.CursorTop)
+            Console.Write ' '
+            
+        let gameCmd cmd = GameCommand cmd 
+            
         match info.Key, info.KeyChar with
         | ConsoleKey.LeftArrow, _ ->
-            area <! Move(1, Left)
+            area <! gameCmd (Move(1, Left))
         | ConsoleKey.RightArrow, _ ->
-            area <! Move(1, Right)
+            area <! gameCmd (Move(1, Right))
         | ConsoleKey.UpArrow, _ ->
-            area <! Move(1, Down)
+            area <! gameCmd (Move(1, Down))
         | ConsoleKey.DownArrow, _ ->
-            area <! Move(1, Up)
+            area <! gameCmd (Move(1, Up))
         | ConsoleKey.A, _ ->
-            area <! Fire(1, Left)
+            area <! gameCmd (Fire(1, Left))
             clearInputChar ()
         | ConsoleKey.D, _ ->
-            area <! Fire(1, Right)
+            area <! gameCmd (Fire(1, Right))
             clearInputChar ()
         | ConsoleKey.W, _ ->
-            area <! Fire(1, Down)
+            area <! gameCmd (Fire(1, Down))
             clearInputChar ()
         | ConsoleKey.S, _ ->
-            area <! Fire(1, Up)
+            area <! gameCmd (Fire(1, Up))
             clearInputChar ()
         | _ -> ()
         info <- Console.ReadKey()
 
-    system.Terminate()
+    server.Terminate()
     |> Async.AwaitTask
     |> ignore
     0
