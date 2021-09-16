@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Server + Client" type="CompoundRunConfigurationType">
+    <toRun name="Metan.Client" type="DotNetProject" />
+    <toRun name="Metan.Server" type="LaunchSettings" />
+    <method v="2" />
+  </configuration>
+</component>
