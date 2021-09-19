@@ -3,18 +3,18 @@
 open System
 open System.Threading.Tasks
 open MBrace.FsPickler
+open Metan.Core
 open Microsoft.AspNetCore.SignalR
 open Microsoft.Extensions.Hosting
 open Akka.Actor
 open Akkling
-open Metan.Core
 
 module Serialization =
     let decode<'T> (bs:BinarySerializer) =
         bs.UnPickle<'T>
     
     let encode (bs:BinarySerializer) =
-      bs.Pickle
+        bs.Pickle
 
 type SignalRHub () =
      inherit Hub ()
@@ -44,7 +44,6 @@ type SignalRHub () =
         Task.CompletedTask
          
 type EventPublisher (hub:IHubContext<SignalRHub>) =
-     
      let bs = BinarySerializer()
      let enc = Serialization.encode bs
      
@@ -60,7 +59,6 @@ type EventPublisher (hub:IHubContext<SignalRHub>) =
          
 [<AutoOpen>]
 module Actors =
-
     let rec client (ep:EventPublisher) (me:Actor<AreaEvent>) =
         let rec connecting() = actor {
             let! message = me.Receive()
@@ -119,20 +117,16 @@ module Actors =
                 let gx = { game with vehicles = vx }
                 let childRef = select me $"client_{id}"
                 childRef <! UserEvent (cnn, UserLeft)
-                return! if ux |> Area.anyUser
-                    then loop(ax) gx
-                    else awaiting(ax) gx 
+                return! if ux |> List.isEmpty
+                    then awaiting(ax) gx
+                    else loop(ax) gx 
         }
-        awaiting { users = []
-                   commands = [] }
-                 { bullets = []
-                   vehicles = []
-                   size = Size(50, 25) }
+        awaiting Area.empty (Game.empty (Size(50, 25)))
+                 
 
 type ActorService (system:ActorSystem, ep:EventPublisher, appLifetime:IHostApplicationLifetime) =
     interface IHostedService with 
         member this.StartAsync _ =
-            
             props(area ep)
                 |> spawn system "area"
                 |> ignore

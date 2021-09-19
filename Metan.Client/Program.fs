@@ -53,7 +53,7 @@ let main _ =
     let connection =
         (HubConnectionBuilder())
           .WithAutomaticReconnect()
-          .WithUrl("http://localhost:5000/server")
+          .WithUrl("http://localhost:8081/server")
           .Build()
     
     let us = { id = None }

@@ -115,13 +115,13 @@ module Vehicle =
         then Blocked m
         else Movable m
     
-    let stopOverVehicles vehicles dir (m:Vehicle) =
+    let stopOverVehicles vs dir (m:Vehicle) =
         let px = move dir m.pos
-        if vehicles |> List.any (fun v -> v.pos = px) 
+        if vs |> List.any (fun v -> v.pos = px) 
         then Blocked m
         else Movable m
 
-    let moveOverId id (m:Vehicle) =
+    let moveById id (m:Vehicle) =
         if m.id = id
         then Movable m
         else Blocked m
@@ -143,7 +143,7 @@ module Vehicle =
     let hitByBullet (bs:Bullet list) (m:Vehicle) =
         match bs |> List.tryFind (fun b -> b.pos = m.pos) with
         | Some b ->
-            if (b.dmg < m.health)
+            if b.dmg < m.health
             then Some { m with health = m.health - b.dmg } 
             else None
         | None -> Some m
@@ -164,7 +164,7 @@ module Game =
         match cs with
         | Move(vid, dir)::rest ->
             let pipe = Movable.ret
-                       >> Movable.bind (Vehicle.moveOverId vid)
+                       >> Movable.bind (Vehicle.moveById vid)
                        >> Movable.bind (Vehicle.stopOverBoundaries game.size dir)
                        >> Movable.bind (Vehicle.stopOverVehicles game.vehicles dir)
                        >> Movable.bind (Vehicle.moveVehicle dir)
@@ -215,14 +215,16 @@ module Game =
         let vx = { id = id; dmg = 1; health = 9; pos = px; color = cr }
         vx::vs
         
+    let empty size =
+        { bullets = []; vehicles = []; size = size }
+        
 module Area =
     let addUser us =
         if not (us |> List.isEmpty)
         then us |> List.max |> (+) 1
         else 1
 
-    let remUser (u:UserId) (us:UserId list) =
+    let remUser u us =
         us |> List.filter (fun ux -> not (ux = u))
         
-    let anyUser (us:UserId list) =
-        us |> List.isEmpty |> not
+    let empty = { users = []; commands = [] }
