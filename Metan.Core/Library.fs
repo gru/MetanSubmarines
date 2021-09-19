@@ -38,13 +38,18 @@ module Core =
           size: Size
         }
     type UserId = int
-    type AreaEvent =
-        | UserJoined of int
+    type ConnectionId = string
+    type UserEvent =
+        | UserJoined of UserId
         | UserLeft
+    type AreaEvent =
+        | UserEvent of ConnectionId * UserEvent
         | State of Game * Game
-    type AreaCommand =
+    type UserCommand =
         | Join
-        | Leave of int
+        | Leave of UserId
+    type AreaCommand =
+        | UserCommand of ConnectionId * UserCommand
         | AreaCommand of GameCommand
     type Area =
         {

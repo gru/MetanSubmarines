@@ -27,17 +27,17 @@ let print (prev: Game) (game:Game) =
         Console.Write '.'
     Console.ForegroundColor <- color
     
-type UserState = { mutable id: int option }
+type UserState = { mutable id: UserId option }
 
 let onAreaEvent (us:UserState) (decode:byte[] -> AreaEvent) (data:byte[]) =
     match decode data with
     | State (prev, game) ->
         print prev game
-    | UserJoined id ->
+    | UserEvent (_, UserJoined id) ->
         Console.Clear()
         Console.CursorVisible <- false
         us.id <- Some id
-    | UserLeft ->
+    | UserEvent (_, UserLeft) ->
         Console.Clear()
         printfn "User left"
         Environment.Exit 0
@@ -49,7 +49,7 @@ let call (c:HubConnection) (encode:AreaCommand -> byte[]) (cmd:AreaCommand) =
     |> Async.RunSynchronously
 
 [<EntryPoint>]
-let main argv =
+let main _ =
     let connection =
         (HubConnectionBuilder())
           .WithAutomaticReconnect()
@@ -80,10 +80,10 @@ let main argv =
         | ConsoleKey.Escape -> Environment.Exit 0
         | _ -> connected <- tryConnect
     
-    let callAreaCommand = call connection enc
+    let callUserCommand cmd = call connection enc (UserCommand ("", cmd))
     let callGameCommand cmd = call connection enc (AreaCommand cmd) 
     
-    callAreaCommand Join
+    callUserCommand Join
     
     let mutable info = Console.ReadKey();
     while (not <| info.Key.Equals(ConsoleKey.E)) do
@@ -115,7 +115,7 @@ let main argv =
                 callGameCommand (Fire (id, Up))
                 clearInputChar ()
             | ConsoleKey.Escape, _ ->
-                callAreaCommand (Leave id)
+                callUserCommand (Leave id)
             | _ -> ()
         | None ->
             printfn "User not connected"

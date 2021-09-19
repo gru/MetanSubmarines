@@ -34,7 +34,13 @@ type SignalRHub () =
          select this.ActorSystem "user/area"
 
      member this.CallAreaCommand(msg: byte[]) =
-        this.AreaActor <! (dec msg) 
+        let cmd =
+            match dec msg with
+            | UserCommand (_, uc) ->
+                UserCommand (this.Context.ConnectionId, uc)
+            | AreaCommand _ as ac ->
+                ac
+        this.AreaActor <! cmd 
         Task.CompletedTask
          
 type EventPublisher (hub:IHubContext<SignalRHub>) =
@@ -42,8 +48,13 @@ type EventPublisher (hub:IHubContext<SignalRHub>) =
      let bs = BinarySerializer()
      let enc = Serialization.encode bs
      
-     member this.AreaEventSent(evt: AreaEvent) =
+     member this.SendAreaEvent(evt: AreaEvent) =
          hub.Clients.All.SendAsync("AreaEventSent", enc evt)
+         |> Async.AwaitTask
+         |> Async.RunSynchronously
+         
+     member this.SendAreaEvent(cnn:string, evt: AreaEvent) =
+         hub.Clients.Client(cnn).SendAsync("AreaEventSent", enc evt)
          |> Async.AwaitTask
          |> Async.RunSynchronously
          
@@ -54,19 +65,19 @@ module Actors =
         let rec connecting() = actor {
             let! message = me.Receive()
             match message with
-                | UserJoined(id) as evt ->
-                    ep.AreaEventSent evt 
-                    return! connected(id)
+                | UserEvent (cnn, UserJoined _) as evt ->
+                    ep.SendAreaEvent (cnn, evt)
+                    return! connected
                 | _ -> ignored()
             }
-        and connected id = 
+        and connected = 
             actor {
                 let! message = me.Receive()
                 match message with
                 | State _ as evt ->
-                    ep.AreaEventSent evt 
-                | UserLeft as evt ->
-                    ep.AreaEventSent evt
+                    ep.SendAreaEvent evt 
+                | UserEvent (cnn, UserLeft) as evt ->
+                    ep.SendAreaEvent (cnn, evt)
                     return! stop()
                 | _ -> ignored()
             }
@@ -79,7 +90,7 @@ module Actors =
         let rec awaiting area game = actor {
             let! command = me.Receive()
             match command with
-            | Join as cmd ->
+            | UserCommand (_, Join) as cmd ->
                 me.Self <! cmd
                 return! loop(area) game
             | _ ->
@@ -95,19 +106,19 @@ module Actors =
                 return! loop({ area with commands = [] }) gx
             | AreaCommand cmd ->
                 return! loop({ area with commands = cmd::area.commands }) game
-            | Join ->
+            | UserCommand (cnn, Join) ->
                 let id = area.users |> Area.addUser
                 let vx = game.vehicles |> Game.addVehicle id game.size
                 let childRef = spawn me $"client_{id}" (props (client ep))
-                childRef <! UserJoined id
+                childRef <! UserEvent (cnn, UserJoined id)
                 return! loop({area with users = id::area.users }) { game with vehicles = vx }
-            | Leave id ->
+            | UserCommand (cnn, Leave id) ->
                 let ux = area.users |> Area.remUser id
                 let vx = game.vehicles |> Game.remVehicle id
                 let ax = { area with users = ux }
                 let gx = { game with vehicles = vx }
                 let childRef = select me $"client_{id}"
-                childRef <! UserLeft
+                childRef <! UserEvent (cnn, UserLeft)
                 return! if ux |> Area.anyUser
                     then loop(ax) gx
                     else awaiting(ax) gx 
