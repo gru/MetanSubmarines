@@ -10,6 +10,10 @@ let encode (bs:BinarySerializer) =
     bs.Pickle
 
 let print (prev: Game) (game:Game) =
+    match game.size with
+    | Size (w, _) ->
+        Console.SetCursorPosition (w + 2, 0)
+        Console.Write $"Game time: {game.time}" 
     for v in prev.vehicles do
         Console.SetCursorPosition v.pos
         Console.Write ' '

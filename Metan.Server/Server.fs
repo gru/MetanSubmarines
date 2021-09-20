@@ -127,7 +127,9 @@ module Actors =
                 { pos = (10, 5); bonus = HealthBonus 2 }
                 { pos = (10, 6); bonus = DamageBonus 2 }
                 { pos = (10, 7); bonus = RandomBonus }
-            ]; size = Size(50, 25)
+            ]
+            size = Size(50, 25)
+            time = 0u
         }
 
 type ActorService (system:ActorSystem, ep:EventPublisher, appLifetime:IHostApplicationLifetime) =

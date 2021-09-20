@@ -43,6 +43,7 @@ module Core =
           vehicles:Vehicle list
           crates:Crate list
           size: Size
+          time: uint
         }
     type UserId = int
     type ConnectionId = string
@@ -231,7 +232,7 @@ module Game =
             let cs = game.crates
                      |> List.map cratePipe
                      |> List.choose id
-            tick { game with bullets = bs; vehicles = vs; crates = cs } rest
+            tick { game with bullets = bs; vehicles = vs; crates = cs; time = game.time + 1u } rest
         | [] -> game
         
     let getRandomPosition (Size(w, h)) =
@@ -253,7 +254,7 @@ module Game =
         vx::vs
         
     let empty size =
-        { bullets = []; vehicles = []; crates = []; size = size }
+        { bullets = []; vehicles = []; crates = []; size = size; time = 0u }
         
 module Area =
     let addUser us =
