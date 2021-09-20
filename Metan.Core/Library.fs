@@ -81,6 +81,13 @@ module Core =
     let outBounds (Size(w, h)) (x, y) =
         x < 0 || y < 0 || x > w || y > h
 
+    let getRandomPosition (rnd:Random) (Size(w, h)) =
+        (rnd.Next(0, w), rnd.Next(0, h))
+        
+    let getRandomColor (rnd:Random) =
+        let ns = Enum.GetNames(typeof<ConsoleColor>)
+        Enum.Parse<ConsoleColor>(ns.[rnd.Next(0, ns.Length - 1)]) 
+
 module Option =
     let ret v = Some v
 
@@ -89,7 +96,7 @@ module List =
         vs |> List.tryFind f |> Option.isSome  
         
 module Crate =
-    let rec apply (c:Crate) (v:Vehicle) =
+    let rec apply (rnd:Random) (c:Crate) (v:Vehicle) =
         match c.bonus with
         | HealthBonus health ->
             Some { v with health = min 9 (health + v.health) }
@@ -98,16 +105,27 @@ module Crate =
             then Some { v with health = v.health - damage }
             else None
         | RandomBonus ->
-            let r = Random()
-            if r.NextDouble() > 0.5
-            then apply { c with bonus = DamageBonus (r.Next(1, 5)) } v
-            else apply { c with bonus = HealthBonus (r.Next(1, 5)) } v
+            if rnd.NextDouble() > 0.5
+            then apply rnd { c with bonus = DamageBonus (rnd.Next(1, 5)) } v
+            else apply rnd { c with bonus = HealthBonus (rnd.Next(1, 5)) } v
             
     let disappearOverVehicles (vs:Vehicle list) (c:Crate) =
         match vs |> List.tryFind (fun v -> v.pos = c.pos) with
         | Some _ -> None
         | None -> Some c
-        
+    
+    let spawn (rnd:Random) size cs =
+        if cs |> List.length < 5 then
+            let pr = rnd.Next(0, 100)
+            if pr >= 0 && pr < 1
+            then Some { pos = getRandomPosition rnd size; bonus = HealthBonus(rnd.Next(1, 5)) }
+            elif pr >= 1 && pr < 2
+            then Some { pos = getRandomPosition rnd size; bonus = DamageBonus(1) }
+            elif pr >= 2 && pr < 3
+            then Some { pos = getRandomPosition rnd size; bonus = RandomBonus }
+            else None
+        else None
+            
 module Bullet =
     let moveBullet (b:Bullet) =
         Some { b with pos = move b.dir b.pos }
@@ -175,9 +193,9 @@ module Vehicle =
             else None
         | None -> Some m
         
-    let takeCrate (cs:Crate list) (m:Vehicle) =
+    let takeCrate (rnd:Random) (cs:Crate list) (m:Vehicle) =
         match cs |> List.tryFind (fun c -> c.pos = m.pos) with
-        | Some c -> Crate.apply c m
+        | Some c -> Crate.apply rnd c m
         | None -> Some m
 
 module Movable =
@@ -192,7 +210,7 @@ module Movable =
         | Blocked v -> v
         
 module Game =
-    let rec tick (game:Game) (cs:GameCommand list) =
+    let rec tick (rnd:Random) (game:Game) (cs:GameCommand list) =
         match cs with
         | Move(vid, dir)::rest ->
             let pipe = Movable.ret
@@ -203,7 +221,7 @@ module Game =
             let vs = game.vehicles
                      |> List.map pipe
                      |> List.map Movable.unwind
-            tick { game with vehicles = vs } rest
+            tick rnd { game with vehicles = vs } rest
         | Fire(vid, dir)::rest ->
             let firePipe = Vehicle.fireById vid
                            >> Option.bind (Vehicle.fireOverBoundaries game.size dir)
@@ -212,7 +230,7 @@ module Game =
                      |> List.map firePipe
                      |> List.choose id
                      |> List.concat
-            tick { game with bullets = game.bullets @ bs } rest
+            tick rnd { game with bullets = game.bullets @ bs } rest
         | Tick::rest ->
             let movePipe = Option.ret
                            >> Option.bind (Bullet.stopOverBoundaries game.size)
@@ -223,34 +241,25 @@ module Game =
                      |> List.choose id
             let hitPipe = Option.ret
                           >> Option.bind (Vehicle.hitByBullet bs)
-                          >> Option.bind (Vehicle.takeCrate game.crates)
+                          >> Option.bind (Vehicle.takeCrate rnd game.crates)
             let vs = game.vehicles
                      |> List.map hitPipe
                      |> List.choose id
             let cratePipe = Option.ret
                             >> Option.bind (Crate.disappearOverVehicles vs)
+            let cx = Crate.spawn rnd game.size game.crates
             let cs = game.crates
                      |> List.map cratePipe
+                     |> List.append [cx]
                      |> List.choose id
-            tick { game with bullets = bs; vehicles = vs; crates = cs; time = game.time + 1u } rest
+            tick rnd { game with bullets = bs; vehicles = vs; crates = cs; time = game.time + 1u } rest
         | [] -> game
-        
-    let getRandomPosition (Size(w, h)) =
-        let r = Random()
-        (r.Next(0, w), r.Next(0, h))
-        
-    let getRandomColor () =
-        let r = Random()
-        let ns = Enum.GetNames(typeof<ConsoleColor>)
-        Enum.Parse<ConsoleColor>(ns.[r.Next(0, ns.Length - 1)]) 
         
     let remVehicle id vs =
         vs |> List.filter (fun v -> not (v.id = id))
         
-    let addVehicle id size vs =
-        let cr = getRandomColor ()
-        let px = getRandomPosition size
-        let vx = { id = id; dmg = 1; health = 9; pos = px; color = cr }
+    let addVehicle id pos cr vs =
+        let vx = { id = id; dmg = 1; health = 9; pos = pos; color = cr }
         vx::vs
         
     let empty size =

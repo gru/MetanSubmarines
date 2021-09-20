@@ -85,6 +85,8 @@ module Actors =
         me.ScheduleRepeatedly
             TimeSpan.Zero (TimeSpan.FromSeconds 0.1) me.Self (AreaCommand Tick) |> ignore
 
+        let rnd = Random()
+        
         let rec awaiting area game = actor {
             let! command = me.Receive()
             match command with
@@ -98,7 +100,7 @@ module Actors =
             let! command = me.Receive ()
             match command with
             | AreaCommand Tick ->
-                let gx = Game.tick game (Tick :: area.commands)
+                let gx = Game.tick rnd game (Tick :: area.commands)
                 let childrenRef = select me "client_*"
                 childrenRef <! State (game, gx)
                 return! loop({ area with commands = [] }) gx
@@ -106,7 +108,9 @@ module Actors =
                 return! loop({ area with commands = cmd::area.commands }) game
             | UserCommand (cnn, Join) ->
                 let id = area.users |> Area.addUser
-                let vx = game.vehicles |> Game.addVehicle id game.size
+                let vc = getRandomColor rnd
+                let vp = getRandomPosition rnd game.size
+                let vx = game.vehicles |> Game.addVehicle id vp vc
                 let childRef = spawn me $"client_{id}" (props (client ep))
                 childRef <! UserEvent (cnn, UserJoined id)
                 return! loop({area with users = id::area.users }) { game with vehicles = vx }
@@ -121,16 +125,7 @@ module Actors =
                     then awaiting(ax) gx
                     else loop(ax) gx 
         }
-        awaiting Area.empty {
-            bullets = []; vehicles = []
-            crates = [
-                { pos = (10, 5); bonus = HealthBonus 2 }
-                { pos = (10, 6); bonus = DamageBonus 2 }
-                { pos = (10, 7); bonus = RandomBonus }
-            ]
-            size = Size(50, 25)
-            time = 0u
-        }
+        awaiting Area.empty (Game.empty (Size(50, 25)))
 
 type ActorService (system:ActorSystem, ep:EventPublisher, appLifetime:IHostApplicationLifetime) =
     interface IHostedService with 
