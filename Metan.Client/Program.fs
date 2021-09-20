@@ -16,6 +16,9 @@ let print (prev: Game) (game:Game) =
     for b in prev.bullets do
         Console.SetCursorPosition b.pos
         Console.Write ' '
+    for c in prev.crates do
+        Console.SetCursorPosition c.pos
+        Console.Write ' '
     let color = Console.ForegroundColor     
     for v in game.vehicles do
         Console.SetCursorPosition v.pos
@@ -25,6 +28,18 @@ let print (prev: Game) (game:Game) =
     for b in game.bullets do
         Console.SetCursorPosition b.pos
         Console.Write '.'
+    for c in game.crates do
+        Console.SetCursorPosition c.pos
+        match c.bonus with
+        | HealthBonus _ ->
+            Console.ForegroundColor <- ConsoleColor.Red
+            Console.Write 'H'
+        | DamageBonus _ ->
+            Console.ForegroundColor <- ConsoleColor.Yellow
+            Console.Write 'D'
+        | RandomBonus _ ->
+            Console.ForegroundColor <- ConsoleColor.Gray
+            Console.Write '?'
     Console.ForegroundColor <- color
     
 type UserState = { mutable id: UserId option }
@@ -53,7 +68,7 @@ let main _ =
     let connection =
         (HubConnectionBuilder())
           .WithAutomaticReconnect()
-          .WithUrl("http://localhost:8081/server")
+          .WithUrl("http://localhost:5000/server")
           .Build()
     
     let us = { id = None }

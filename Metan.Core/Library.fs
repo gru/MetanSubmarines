@@ -27,6 +27,12 @@ module Core =
     type Movable<'T> =
         | Movable of 'T
         | Blocked of 'T
+    type Bonus =
+        | HealthBonus of Health
+        | DamageBonus of Damage
+        | RandomBonus
+    type Crate = { pos:Position; bonus:Bonus }
+        
     type GameCommand =
         | Move of VehicleId * Direction
         | Fire of VehicleId * Direction
@@ -35,6 +41,7 @@ module Core =
         {
           bullets:Bullet list
           vehicles:Vehicle list
+          crates:Crate list
           size: Size
         }
     type UserId = int
@@ -73,13 +80,32 @@ module Core =
     let outBounds (Size(w, h)) (x, y) =
         x < 0 || y < 0 || x > w || y > h
 
-
 module Option =
     let ret v = Some v
 
 module List =
     let any f vs =
         vs |> List.tryFind f |> Option.isSome  
+        
+module Crate =
+    let rec apply (c:Crate) (v:Vehicle) =
+        match c.bonus with
+        | HealthBonus health ->
+            Some { v with health = min 9 (health + v.health) }
+        | DamageBonus damage ->
+            if damage < v.health
+            then Some { v with health = v.health - damage }
+            else None
+        | RandomBonus ->
+            let r = Random()
+            if r.NextDouble() > 0.5
+            then apply { c with bonus = DamageBonus (r.Next(1, 5)) } v
+            else apply { c with bonus = HealthBonus (r.Next(1, 5)) } v
+            
+    let disappearOverVehicles (vs:Vehicle list) (c:Crate) =
+        match vs |> List.tryFind (fun v -> v.pos = c.pos) with
+        | Some _ -> None
+        | None -> Some c
         
 module Bullet =
     let moveBullet (b:Bullet) =
@@ -91,7 +117,7 @@ module Bullet =
         then None
         else Some b
 
-    let rec stopOverVehicles vs (b:Bullet) =
+    let rec stopOverVehicles (vs: Vehicle list) (b:Bullet) =
         match vs |> List.tryFind (fun v -> v.pos = b.pos) with
         | Some _ -> None
         | None -> Some b
@@ -115,7 +141,7 @@ module Vehicle =
         then Blocked m
         else Movable m
     
-    let stopOverVehicles vs dir (m:Vehicle) =
+    let stopOverVehicles (vs:Vehicle list) dir (m:Vehicle) =
         let px = move dir m.pos
         if vs |> List.any (fun v -> v.pos = px) 
         then Blocked m
@@ -146,6 +172,11 @@ module Vehicle =
             if b.dmg < m.health
             then Some { m with health = m.health - b.dmg } 
             else None
+        | None -> Some m
+        
+    let takeCrate (cs:Crate list) (m:Vehicle) =
+        match cs |> List.tryFind (fun c -> c.pos = m.pos) with
+        | Some c -> Crate.apply c m
         | None -> Some m
 
 module Movable =
@@ -191,10 +222,16 @@ module Game =
                      |> List.choose id
             let hitPipe = Option.ret
                           >> Option.bind (Vehicle.hitByBullet bs)
+                          >> Option.bind (Vehicle.takeCrate game.crates)
             let vs = game.vehicles
                      |> List.map hitPipe
                      |> List.choose id
-            tick { game with bullets = bs; vehicles = vs } rest
+            let cratePipe = Option.ret
+                            >> Option.bind (Crate.disappearOverVehicles vs)
+            let cs = game.crates
+                     |> List.map cratePipe
+                     |> List.choose id
+            tick { game with bullets = bs; vehicles = vs; crates = cs } rest
         | [] -> game
         
     let getRandomPosition (Size(w, h)) =
@@ -216,7 +253,7 @@ module Game =
         vx::vs
         
     let empty size =
-        { bullets = []; vehicles = []; size = size }
+        { bullets = []; vehicles = []; crates = []; size = size }
         
 module Area =
     let addUser us =
