@@ -7,6 +7,8 @@ module Core =
     type Position = int * int
     type Direction = Up | Down | Left | Right
     type Size = Size of int * int
+    type Shape = Shape of Position list
+    type GlobalShape = GlobalShape of Position list
     type Damage = int
     type Bullet =
         {
@@ -20,6 +22,7 @@ module Core =
         {
             id:VehicleId
             pos:Position
+            shape: Shape
             dmg:Damage
             health:Health
             color: ConsoleColor
@@ -30,6 +33,7 @@ module Core =
     type Bonus =
         | HealthBonus of Health
         | DamageBonus of Damage
+        | ShapeBonus
         | RandomBonus
     type Crate = { pos:Position; bonus:Bonus }
         
@@ -94,7 +98,28 @@ module Option =
 module List =
     let any f vs =
         vs |> List.tryFind f |> Option.isSome  
+
+module Shape =
+    
         
+    let lcl = Shape [ (0, 0) ]
+    
+    let glb pos = GlobalShape [ pos ]
+    
+    let toGlb ((gx, gy): Position) = function
+        | Shape ps ->
+            GlobalShape (ps |> List.map (fun (x, y) -> (x + gx, y + gy)))
+
+    let toLcl ((gx, gy): Position) = function
+        | GlobalShape ps ->
+            Shape (ps |> List.map (fun (x, y) -> (x - gx, y - gy)))
+    
+    let join (GlobalShape(ps1)) (GlobalShape(ps2)) =
+        GlobalShape(ps1 @ ps2)
+
+    let move (dir:Direction) (GlobalShape(ps)) =
+        GlobalShape (ps |> List.map (move dir))
+
 module Crate =
     let rec apply (rnd:Random) (c:Crate) (v:Vehicle) =
         match c.bonus with
@@ -104,6 +129,12 @@ module Crate =
             if damage < v.health
             then Some { v with health = v.health - damage }
             else None
+        | ShapeBonus ->
+            let vs = Shape.toGlb v.pos v.shape
+            let cs = Shape.glb v.pos
+            let vsx = Shape.move Right vs
+            let vsy = Shape.join cs vsx
+            Some { v with shape = Shape.toLcl v.pos vsy }
         | RandomBonus ->
             if rnd.NextDouble() > 0.5
             then apply rnd { c with bonus = DamageBonus (rnd.Next(1, 5)) } v
@@ -122,6 +153,8 @@ module Crate =
             elif pr >= 1 && pr < 2
             then Some { pos = getRandomPosition rnd size; bonus = DamageBonus(1) }
             elif pr >= 2 && pr < 3
+            then Some { pos = getRandomPosition rnd size; bonus = ShapeBonus }
+            elif pr >= 4 && pr < 4
             then Some { pos = getRandomPosition rnd size; bonus = RandomBonus }
             else None
         else None
@@ -259,7 +292,7 @@ module Game =
         vs |> List.filter (fun v -> not (v.id = id))
         
     let addVehicle id pos cr vs =
-        let vx = { id = id; dmg = 1; health = 9; pos = pos; color = cr }
+        let vx = { id = id; dmg = 1; health = 9; pos = pos; shape = Shape.lcl; color = cr }
         vx::vs
         
     let empty size =

@@ -15,8 +15,11 @@ let print (prev: Game) (game:Game) =
         Console.SetCursorPosition (w + 2, 0)
         Console.Write $"Game time: {game.time}" 
     for v in prev.vehicles do
-        Console.SetCursorPosition v.pos
-        Console.Write ' '
+        match Shape.toGlb v.pos v.shape with
+        | GlobalShape ps ->
+            for p in ps do
+                Console.SetCursorPosition p
+                Console.Write ' '
     for b in prev.bullets do
         Console.SetCursorPosition b.pos
         Console.Write ' '
@@ -25,9 +28,12 @@ let print (prev: Game) (game:Game) =
         Console.Write ' '
     let color = Console.ForegroundColor     
     for v in game.vehicles do
-        Console.SetCursorPosition v.pos
         Console.ForegroundColor <- v.color
-        Console.Write v.health
+        match Shape.toGlb v.pos v.shape with
+        | GlobalShape ps ->
+            for p in ps do
+                Console.SetCursorPosition p
+                Console.Write v.health
     Console.ForegroundColor <- ConsoleColor.Yellow
     for b in game.bullets do
         Console.SetCursorPosition b.pos
@@ -41,6 +47,9 @@ let print (prev: Game) (game:Game) =
         | DamageBonus _ ->
             Console.ForegroundColor <- ConsoleColor.Yellow
             Console.Write 'D'
+        | ShapeBonus ->
+            Console.ForegroundColor <- ConsoleColor.Yellow
+            Console.Write 'S'
         | RandomBonus _ ->
             Console.ForegroundColor <- ConsoleColor.Gray
             Console.Write '?'
@@ -72,7 +81,7 @@ let main _ =
     let connection =
         (HubConnectionBuilder())
           .WithAutomaticReconnect()
-          .WithUrl("http://localhost:5000/server")
+          .WithUrl("http://localhost:8081/server")
           .Build()
     
     let us = { id = None }
