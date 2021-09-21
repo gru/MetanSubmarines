@@ -16,7 +16,7 @@ let print (prev: Game) (game:Game) =
         Console.Write $"Game time: {game.time}" 
     for v in prev.vehicles do
         let tl = HitBox.topLeft v.hitBox
-        match Shape.toGlb tl v.shape with
+        match Shape.toShape tl v.shape with
         | Shape ps ->
             for p in ps do
                 Console.SetCursorPosition p
@@ -33,7 +33,7 @@ let print (prev: Game) (game:Game) =
     for v in game.vehicles do
         Console.ForegroundColor <- v.color
         let tl = HitBox.topLeft v.hitBox
-        match Shape.toGlb tl v.shape with
+        match Shape.toShape tl v.shape with
         | Shape ps ->
             for p in ps do
                 Console.SetCursorPosition p

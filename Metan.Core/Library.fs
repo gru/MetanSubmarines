@@ -92,7 +92,6 @@ module HitBox =
         HitBox (p, p)
         
     let intersect (HitBox((l1, t1), (r1, b1))) (HitBox((l2, t2), (r2, b2))) =
-        // ! ( b.left > a.right || b.right < a.left || b.top < a.bottom || b.bottom > a.top)
         not (l2 > r1 || r2 < l1 || t2 < b1 || b2 > t1)
 
     let move dir (HitBox((l, t), (r, b))) =
@@ -114,17 +113,13 @@ module HitBox =
 module Shape =
     exception EmptyGlobalShape
     
-    let lcl = [ (0, 0) ]
+    let fromPosition pos = Shape [ pos ]
     
-    let glb pos = Shape [ pos ]
-    
-    let toGlb ((gx, gy): Position) = function
-        | ps ->
-            Shape (ps |> List.map (fun (x, y) -> (x + gx, y + gy)))
+    let toShape ((gx, gy): Position) = function
+        | ps -> Shape (ps |> List.map (fun (x, y) -> (x + gx, y + gy)))
 
-    let toLcl ((gx, gy): Position) = function
-        | Shape ps ->
-            (ps |> List.map (fun (x, y) -> (x - gx, y - gy)))
+    let toPositions ((gx, gy): Position) = function
+        | Shape ps -> (ps |> List.map (fun (x, y) -> (x - gx, y - gy)))
     
     let join (Shape(ps1)) (Shape(ps2)) =
         Shape (ps1 @ ps2)
@@ -154,12 +149,12 @@ module Crate =
             else None
         | ShapeBonus ->
             let tl = HitBox.topLeft v.hitBox
-            let gv = Shape.toGlb tl v.shape
-            let gc = Shape.glb tl
+            let gv = Shape.toShape tl v.shape
+            let gc = Shape.fromPosition tl
             let gvx = Shape.move Right gv
             let gvy = Shape.join gc gvx
             let hb = Shape.toHitBox gvy
-            Some { v with hitBox = hb; shape = Shape.toLcl tl gvy }
+            Some { v with hitBox = hb; shape = Shape.toPositions tl gvy }
         | RandomBonus ->
             if rnd.NextDouble() > 0.5
             then apply rnd { c with bonus = DamageBonus (rnd.Next(1, 5)) } v
@@ -331,7 +326,7 @@ module Game =
         vs |> List.filter (fun v -> not (v.id = id))
         
     let addVehicle id hb cr vs =
-        let vx = { id = id; dmg = 1; health = 9; hitBox = hb; shape = Shape.lcl; color = cr }
+        let vx = { id = id; dmg = 1; health = 9; hitBox = hb; shape = [ (0, 0) ]; color = cr }
         vx::vs
         
     let empty size =
