@@ -32,7 +32,6 @@ module Core =
             hitBox:HitBox
             shape:Reflection
             dmg:Damage
-            health:Health
             color: ConsoleColor
         }
     type Movable<'T> =
@@ -120,19 +119,19 @@ module HitBox =
 module Shape =
     exception EmptyProjection
     
-    let (+) (x1, y1) (x2, y2) =
+    let add (x1, y1) (x2, y2) =
         (x1 + x2, y1 + y2)
             
-    let (-) (x1, y1) (x2, y2) =
+    let neg (x1, y1) (x2, y2) =
         (x1 - x2, y1 - y2)
             
     let project pos = function
         | Reflection sl ->
-            Projection (sl |> List.map (fun s -> { s with pos = s.pos + pos }))
+            Projection (sl |> List.map (fun s -> { s with pos =  add s.pos pos }))
         
     let reflect pos = function
         | Projection sl ->
-            Reflection (sl |> List.map (fun s -> { s with pos = s.pos - pos }))
+            Reflection (sl |> List.map (fun s -> { s with pos = neg s.pos pos }))
 
     let move dir (Reflection(sl)) =
         Reflection (sl |> List.map (fun s -> { s with pos = Position.move dir s.pos }))
@@ -154,15 +153,36 @@ module Shape =
     let body pos health =
         Reflection [ { pos = pos; kind = Body health } ]
 
+    let applyAll ref (f:Segment -> Segment) =
+        match ref with
+        | Reflection sl ->
+            Reflection (sl |> List.map f)
+    
+    let applyOne ref pos (f:Segment -> Segment) =
+        let filterByPos = function
+            | { pos = psx } as s when pos = psx -> f s
+            | s -> s
+        applyAll ref filterByPos
+    
+    let healAll health ref =
+        let healSegment = function
+            | { kind = Body current } as s ->
+                { s with kind = Body (min 9 (current + health)) }
+        applyAll ref healSegment
+
+    let damageOne pos dmg ref =
+        let damageSegment = function
+            | { kind = Body current } as s ->
+                { s with kind = Body (max 0 (current - dmg)) }
+        applyOne ref pos damageSegment
+
 module Crate =
     let rec apply (rnd:Random) (c:Crate) (v:Vehicle) =
         match c.bonus with
         | HealthBonus health ->
-            Some { v with health = min 9 (health + v.health) }
+            Some { v with shape = Shape.healAll health v.shape }
         | DamageBonus damage ->
-            if damage < v.health
-            then Some { v with health = v.health - damage }
-            else None
+            Some { v with shape = Shape.healAll -damage v.shape }
         | ShapeBonus ->
             let b = Shape.body (0, 0) 9
             let r = Shape.move Right v.shape
@@ -266,9 +286,10 @@ module Vehicle =
     let hitByBullet (bs:Bullet list) (m:Vehicle) =
         match bs |> List.tryFind (fun b -> HitBox.intersect b.hitBox m.hitBox) with
         | Some b ->
-            if b.dmg < m.health
-            then Some { m with health = m.health - b.dmg } 
-            else None
+            let mtl = HitBox.topLeft m.hitBox
+            let btl = HitBox.topLeft b.hitBox
+            let bps = Shape.neg btl mtl
+            Some { m with shape = Shape.damageOne bps b.dmg m.shape }
         | None -> Some m
         
     let takeCrate (rnd:Random) (cs:Crate list) (m:Vehicle) =
@@ -342,7 +363,7 @@ module Game =
         vs |> List.filter (fun v -> not (v.id = id))
         
     let addVehicle id hb cr vs =
-        let vx = { id = id; dmg = 1; health = 9; hitBox = hb; shape = Shape.body (0, 0) 9; color = cr }
+        let vx = { id = id; dmg = 1; hitBox = hb; shape = Shape.body (0, 0) 9; color = cr }
         vx::vs
         
     let empty size =
