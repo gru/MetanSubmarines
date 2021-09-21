@@ -7,22 +7,30 @@ module Core =
     type Size = int * int
     type Position = int * int
     type Direction = Up | Down | Left | Right
-    type Shape = Shape of Position list
-    type HitBox = HitBox of Position * Position
     type Damage = int
+    type Health = int
+    type SegmentKind =
+        | Body of Health
+    type Segment =
+        {
+            pos: Position
+            kind: SegmentKind
+        }
+    type Reflection = Reflection of Segment list
+    type Projection = Projection of Segment list
+    type HitBox = HitBox of Position * Position
     type Bullet =
         {
             hitBox:HitBox
             dir:Direction
             dmg:Damage
         }
-    type Health = int
     type VehicleId = int
     type Vehicle =
         {
             id:VehicleId
             hitBox:HitBox
-            shape:Position list
+            shape:Reflection
             dmg:Damage
             health:Health
             color: ConsoleColor
@@ -36,7 +44,6 @@ module Core =
         | ShapeBonus
         | RandomBonus
     type Crate = { hitBox:HitBox; bonus:Bonus }
-        
     type GameCommand =
         | Move of VehicleId * Direction
         | Fire of VehicleId * Direction
@@ -111,32 +118,41 @@ module HitBox =
         t < 0 || b > h || l < 0 || r > w
 
 module Shape =
-    exception EmptyGlobalShape
+    exception EmptyProjection
     
-    let fromPosition pos = Shape [ pos ]
-    
-    let toShape ((gx, gy): Position) = function
-        | ps -> Shape (ps |> List.map (fun (x, y) -> (x + gx, y + gy)))
-
-    let toPositions ((gx, gy): Position) = function
-        | Shape ps -> (ps |> List.map (fun (x, y) -> (x - gx, y - gy)))
-    
-    let join (Shape(ps1)) (Shape(ps2)) =
-        Shape (ps1 @ ps2)
-
-    let move (dir:Direction) (Shape(ps)) =
-        Shape (ps |> List.map (Position.move dir))
+    let (+) (x1, y1) (x2, y2) =
+        (x1 + x2, y1 + y2)
+            
+    let (-) (x1, y1) (x2, y2) =
+        (x1 - x2, y1 - y2)
+            
+    let project pos = function
+        | Reflection sl ->
+            Projection (sl |> List.map (fun s -> { s with pos = s.pos + pos }))
         
-    let toHitBox (Shape(ps)) =
-        match ps with
-        | [] ->
-            raise EmptyGlobalShape
-        | [ p ] ->
-            HitBox.single p
-        | _ ->
-            let xs = ps |> List.map fst   
-            let ys = ps |> List.map snd   
+    let reflect pos = function
+        | Projection sl ->
+            Reflection (sl |> List.map (fun s -> { s with pos = s.pos - pos }))
+
+    let move dir (Reflection(sl)) =
+        Reflection (sl |> List.map (fun s -> { s with pos = Position.move dir s.pos }))
+
+    let join (Reflection sl1) (Reflection sl2) =
+        Reflection (sl1 @ sl2)
+    
+    let toHitBox proj =
+        match proj with
+        | Projection [] ->
+            raise EmptyProjection
+        | Projection [ s ] ->
+            HitBox.single s.pos
+        | Projection sl ->
+            let xs = sl |> List.map (fun s -> fst s.pos)   
+            let ys = sl |> List.map (fun s -> snd s.pos)       
             HitBox ((List.min xs, List.min ys), (List.max xs, List.max ys))
+        
+    let body pos health =
+        Reflection [ { pos = pos; kind = Body health } ]
 
 module Crate =
     let rec apply (rnd:Random) (c:Crate) (v:Vehicle) =
@@ -148,13 +164,13 @@ module Crate =
             then Some { v with health = v.health - damage }
             else None
         | ShapeBonus ->
+            let b = Shape.body (0, 0) 9
+            let r = Shape.move Right v.shape
+            let s = Shape.join b r
             let tl = HitBox.topLeft v.hitBox
-            let gv = Shape.toShape tl v.shape
-            let gc = Shape.fromPosition tl
-            let gvx = Shape.move Right gv
-            let gvy = Shape.join gc gvx
-            let hb = Shape.toHitBox gvy
-            Some { v with hitBox = hb; shape = Shape.toPositions tl gvy }
+            let p = Shape.project tl s
+            let hb = Shape.toHitBox p
+            Some { v with hitBox = hb; shape = s }
         | RandomBonus ->
             if rnd.NextDouble() > 0.5
             then apply rnd { c with bonus = DamageBonus (rnd.Next(1, 5)) } v
@@ -326,7 +342,7 @@ module Game =
         vs |> List.filter (fun v -> not (v.id = id))
         
     let addVehicle id hb cr vs =
-        let vx = { id = id; dmg = 1; health = 9; hitBox = hb; shape = [ (0, 0) ]; color = cr }
+        let vx = { id = id; dmg = 1; health = 9; hitBox = hb; shape = Shape.body (0, 0) 9; color = cr }
         vx::vs
         
     let empty size =
