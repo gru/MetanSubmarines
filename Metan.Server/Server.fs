@@ -1,7 +1,6 @@
 ﻿namespace Metan.Server
 
 open System
-open System.Diagnostics
 open System.Threading.Tasks
 open MBrace.FsPickler
 open Metan.Core
@@ -128,9 +127,11 @@ module Actors =
         }
         awaiting Area.empty  { bullets = []; vehicles = [
             
-            { id = 2; hitBox = HitBox ((10, 10), (11, 10)); dmg = 1; color = ConsoleColor.Cyan; shape = Reflection [
+            { id = 2; hitBox = HitBox ((10, 10), (12, 11)); dmg = 1; color = ConsoleColor.Cyan; shape = Reflection [
                 { pos = (0, 0); kind = Body 9 }
                 { pos = (1, 0); kind = Body 9 }
+                { pos = (2, 0); kind = Body 9 }
+                { pos = (2, 1); kind = Body 9 }
             ] }
         ]; crates = []; size = (Size(50, 25)); time = 0u }
 

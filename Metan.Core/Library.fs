@@ -76,6 +76,12 @@ module Core =
         }
 
 module Position =
+    let add (x1, y1) (x2, y2) =
+        (x1 + x2, y1 + y2)
+            
+    let neg (x1, y1) (x2, y2) =
+        (x1 - x2, y1 - y2)
+        
     let move dir (x, y) =
         match dir with
         | Up -> (x, y + 1)
@@ -94,12 +100,13 @@ module List =
         vs |> List.tryFind f |> Option.isSome  
 
 module HitBox =
-    let single p =
-        HitBox (p, p)
-        
-    let intersect (HitBox((l1, t1), (r1, b1))) (HitBox((l2, t2), (r2, b2))) =
-        not (l2 > r1 || r2 < l1 || t2 < b1 || b2 > t1)
+    let single p = HitBox (p, p)
+    let topLeft (HitBox(lt, _)) = lt
+    let bottomRight (HitBox(_, rb)) = rb
 
+    let intersect (HitBox((l1, t1), (r1, b1))) (HitBox((l2, t2), (r2, b2))) =
+        not (l2 > r1 || r2 < l1 || t2 > b1 || b2 < t1)
+        
     let move dir (HitBox((l, t), (r, b))) =
         match dir with
         | Up -> HitBox ((l, t + 1), (r, b + 1))
@@ -107,31 +114,24 @@ module HitBox =
         | Left -> HitBox ((l - 1, t), (r - 1, b))
         | Right -> HitBox ((l + 1, t), (r + 1, b))
         
-    let topLeft (HitBox(lt, _)) =
-        lt
-        
-    let bottomRight (HitBox(_, rb)) =
-        rb
-        
     let outBounds (w, h) (HitBox((l, t), (r, b))) =
         t < 0 || b > h || l < 0 || r > w
+        
+    let reflect hb1 hb2 =
+        let tl1 = topLeft hb1
+        let tl2 = topLeft hb2
+        Position.neg tl2 tl1
 
 module Shape =
     exception EmptyProjection
-    
-    let add (x1, y1) (x2, y2) =
-        (x1 + x2, y1 + y2)
-            
-    let neg (x1, y1) (x2, y2) =
-        (x1 - x2, y1 - y2)
             
     let project pos = function
         | Reflection sl ->
-            Projection (sl |> List.map (fun s -> { s with pos =  add s.pos pos }))
+            Projection (sl |> List.map (fun s -> { s with pos = Position.add s.pos pos }))
         
     let reflect pos = function
         | Projection sl ->
-            Reflection (sl |> List.map (fun s -> { s with pos = neg s.pos pos }))
+            Reflection (sl |> List.map (fun s -> { s with pos = Position.neg s.pos pos }))
 
     let move dir (Reflection(sl)) =
         Reflection (sl |> List.map (fun s -> { s with pos = Position.move dir s.pos }))
@@ -153,6 +153,9 @@ module Shape =
     let body pos health =
         Reflection [ { pos = pos; kind = Body health } ]
 
+    let intersectOne (Reflection sl1) (pos:Position) =
+        sl1 |> List.tryFind (fun s -> s.pos = pos)
+        
     let applyAll ref (f:Segment -> Segment) =
         match ref with
         | Reflection sl ->
@@ -230,7 +233,11 @@ module Bullet =
 
     let rec stopOverVehicles (vs: Vehicle list) (b:Bullet) =
         match vs |> List.tryFind (fun v -> HitBox.intersect v.hitBox b.hitBox) with
-        | Some _ -> None
+        | Some v ->
+            let ref = HitBox.reflect v.hitBox b.hitBox 
+            match Shape.intersectOne v.shape ref with
+            | Some _ -> None
+            | None -> Some b 
         | None -> Some b
     
     let rec moveBullets bullets pipe =
@@ -286,10 +293,8 @@ module Vehicle =
     let hitByBullet (bs:Bullet list) (m:Vehicle) =
         match bs |> List.tryFind (fun b -> HitBox.intersect b.hitBox m.hitBox) with
         | Some b ->
-            let mtl = HitBox.topLeft m.hitBox
-            let btl = HitBox.topLeft b.hitBox
-            let bps = Shape.neg btl mtl
-            Some { m with shape = Shape.damageOne bps b.dmg m.shape }
+            let ref = HitBox.reflect m.hitBox b.hitBox
+            Some { m with shape = Shape.damageOne ref b.dmg m.shape }
         | None -> Some m
         
     let takeCrate (rnd:Random) (cs:Crate list) (m:Vehicle) =
