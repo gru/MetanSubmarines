@@ -17,7 +17,7 @@ let print (prev: Game) (game:Game) =
     for v in prev.vehicles do
         let tl = HitBox.topLeft v.hitBox
         match Shape.toGlb tl v.shape with
-        | GlobalShape ps ->
+        | Shape ps ->
             for p in ps do
                 Console.SetCursorPosition p
                 Console.Write ' '
@@ -34,7 +34,7 @@ let print (prev: Game) (game:Game) =
         Console.ForegroundColor <- v.color
         let tl = HitBox.topLeft v.hitBox
         match Shape.toGlb tl v.shape with
-        | GlobalShape ps ->
+        | Shape ps ->
             for p in ps do
                 Console.SetCursorPosition p
                 Console.Write v.health

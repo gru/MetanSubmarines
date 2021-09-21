@@ -8,7 +8,6 @@ module Core =
     type Position = int * int
     type Direction = Up | Down | Left | Right
     type Shape = Shape of Position list
-    type GlobalShape = GlobalShape of Position list
     type HitBox = HitBox of Position * Position
     type Damage = int
     type Bullet =
@@ -23,7 +22,7 @@ module Core =
         {
             id:VehicleId
             hitBox:HitBox
-            shape:Shape
+            shape:Position list
             dmg:Damage
             health:Health
             color: ConsoleColor
@@ -115,25 +114,25 @@ module HitBox =
 module Shape =
     exception EmptyGlobalShape
     
-    let lcl = Shape [ (0, 0) ]
+    let lcl = [ (0, 0) ]
     
-    let glb pos = GlobalShape [ pos ]
+    let glb pos = Shape [ pos ]
     
     let toGlb ((gx, gy): Position) = function
-        | Shape ps ->
-            GlobalShape (ps |> List.map (fun (x, y) -> (x + gx, y + gy)))
+        | ps ->
+            Shape (ps |> List.map (fun (x, y) -> (x + gx, y + gy)))
 
     let toLcl ((gx, gy): Position) = function
-        | GlobalShape ps ->
-            Shape (ps |> List.map (fun (x, y) -> (x - gx, y - gy)))
+        | Shape ps ->
+            (ps |> List.map (fun (x, y) -> (x - gx, y - gy)))
     
-    let join (GlobalShape(ps1)) (GlobalShape(ps2)) =
-        GlobalShape(ps1 @ ps2)
+    let join (Shape(ps1)) (Shape(ps2)) =
+        Shape (ps1 @ ps2)
 
-    let move (dir:Direction) (GlobalShape(ps)) =
-        GlobalShape (ps |> List.map (Position.move dir))
+    let move (dir:Direction) (Shape(ps)) =
+        Shape (ps |> List.map (Position.move dir))
         
-    let toHitBox (GlobalShape(ps)) =
+    let toHitBox (Shape(ps)) =
         match ps with
         | [] ->
             raise EmptyGlobalShape
