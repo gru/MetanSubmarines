@@ -11,35 +11,41 @@ let encode (bs:BinarySerializer) =
 
 let print (prev: Game) (game:Game) =
     match game.size with
-    | Size (w, _) ->
+    |  w, _ ->
         Console.SetCursorPosition (w + 2, 0)
         Console.Write $"Game time: {game.time}" 
     for v in prev.vehicles do
-        match Shape.toGlb v.pos v.shape with
+        let tl = HitBox.topLeft v.hitBox
+        match Shape.toGlb tl v.shape with
         | GlobalShape ps ->
             for p in ps do
                 Console.SetCursorPosition p
                 Console.Write ' '
     for b in prev.bullets do
-        Console.SetCursorPosition b.pos
+        let tl = HitBox.topLeft b.hitBox
+        Console.SetCursorPosition tl
         Console.Write ' '
     for c in prev.crates do
-        Console.SetCursorPosition c.pos
+        let tl = HitBox.topLeft c.hitBox
+        Console.SetCursorPosition tl
         Console.Write ' '
     let color = Console.ForegroundColor     
     for v in game.vehicles do
         Console.ForegroundColor <- v.color
-        match Shape.toGlb v.pos v.shape with
+        let tl = HitBox.topLeft v.hitBox
+        match Shape.toGlb tl v.shape with
         | GlobalShape ps ->
             for p in ps do
                 Console.SetCursorPosition p
                 Console.Write v.health
     Console.ForegroundColor <- ConsoleColor.Yellow
     for b in game.bullets do
-        Console.SetCursorPosition b.pos
+        let tl = HitBox.topLeft b.hitBox
+        Console.SetCursorPosition tl
         Console.Write '.'
     for c in game.crates do
-        Console.SetCursorPosition c.pos
+        let tl = HitBox.topLeft c.hitBox
+        Console.SetCursorPosition tl
         match c.bonus with
         | HealthBonus _ ->
             Console.ForegroundColor <- ConsoleColor.Red
@@ -81,7 +87,7 @@ let main _ =
     let connection =
         (HubConnectionBuilder())
           .WithAutomaticReconnect()
-          .WithUrl("http://localhost:8081/server")
+          .WithUrl("http://localhost:5000/server")
           .Build()
     
     let us = { id = None }

@@ -1,6 +1,7 @@
 ﻿namespace Metan.Server
 
 open System
+open System.Diagnostics
 open System.Threading.Tasks
 open MBrace.FsPickler
 open Metan.Core
@@ -108,9 +109,9 @@ module Actors =
                 return! loop({ area with commands = cmd::area.commands }) game
             | UserCommand (cnn, Join) ->
                 let id = area.users |> Area.addUser
-                let vc = getRandomColor rnd
-                let vp = getRandomPosition rnd game.size
-                let vx = game.vehicles |> Game.addVehicle id vp vc
+                let vc = Vehicle.getColor rnd
+                let vp = Position.getRandom rnd game.size
+                let vx = game.vehicles |> Game.addVehicle id (HitBox.single vp) vc
                 let childRef = spawn me $"client_{id}" (props (client ep))
                 childRef <! UserEvent (cnn, UserJoined id)
                 return! loop({area with users = id::area.users }) { game with vehicles = vx }

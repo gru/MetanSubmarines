@@ -4,15 +4,16 @@ open System
 
 [<AutoOpen>]
 module Core =
+    type Size = int * int
     type Position = int * int
     type Direction = Up | Down | Left | Right
-    type Size = Size of int * int
     type Shape = Shape of Position list
     type GlobalShape = GlobalShape of Position list
+    type HitBox = HitBox of Position * Position
     type Damage = int
     type Bullet =
         {
-            pos:Position
+            hitBox:HitBox
             dir:Direction
             dmg:Damage
         }
@@ -21,8 +22,8 @@ module Core =
     type Vehicle =
         {
             id:VehicleId
-            pos:Position
-            shape: Shape
+            hitBox:HitBox
+            shape:Shape
             dmg:Damage
             health:Health
             color: ConsoleColor
@@ -35,7 +36,7 @@ module Core =
         | DamageBonus of Damage
         | ShapeBonus
         | RandomBonus
-    type Crate = { pos:Position; bonus:Bonus }
+    type Crate = { hitBox:HitBox; bonus:Bonus }
         
     type GameCommand =
         | Move of VehicleId * Direction
@@ -68,7 +69,8 @@ module Core =
             users: UserId list
             commands: GameCommand list
         }
-        
+
+module Position =
     let move dir (x, y) =
         match dir with
         | Up -> (x, y + 1)
@@ -76,21 +78,8 @@ module Core =
         | Left -> (x - 1, y)
         | Right -> (x + 1, y)
 
-    let onBounds (Size(w, h)) (x, y) =
-        x = 0 || y = 0 || x = w || y = h
-        
-    let inBounds (Size(w, h)) (x, y) =
-        x > 0 || y > 0 || x < w || y < h
-
-    let outBounds (Size(w, h)) (x, y) =
-        x < 0 || y < 0 || x > w || y > h
-
-    let getRandomPosition (rnd:Random) (Size(w, h)) =
+    let getRandom (rnd:Random) ((w, h):Size) =
         (rnd.Next(0, w), rnd.Next(0, h))
-        
-    let getRandomColor (rnd:Random) =
-        let ns = Enum.GetNames(typeof<ConsoleColor>)
-        Enum.Parse<ConsoleColor>(ns.[rnd.Next(0, ns.Length - 1)]) 
 
 module Option =
     let ret v = Some v
@@ -99,9 +88,33 @@ module List =
     let any f vs =
         vs |> List.tryFind f |> Option.isSome  
 
-module Shape =
-    
+module HitBox =
+    let single p =
+        HitBox (p, p)
         
+    let intersect (HitBox((l1, t1), (r1, b1))) (HitBox((l2, t2), (r2, b2))) =
+        // ! ( b.left > a.right || b.right < a.left || b.top < a.bottom || b.bottom > a.top)
+        not (l2 > r1 || r2 < l1 || t2 < b1 || b2 > t1)
+
+    let move dir (HitBox((l, t), (r, b))) =
+        match dir with
+        | Up -> HitBox ((l, t + 1), (r, b + 1))
+        | Down -> HitBox ((l, t - 1), (r, b - 1))
+        | Left -> HitBox ((l - 1, t), (r - 1, b))
+        | Right -> HitBox ((l + 1, t), (r + 1, b))
+        
+    let topLeft (HitBox(lt, _)) =
+        lt
+        
+    let bottomRight (HitBox(_, rb)) =
+        rb
+        
+    let outBounds (w, h) (HitBox((l, t), (r, b))) =
+        t < 0 || b > h || l < 0 || r > w
+
+module Shape =
+    exception EmptyGlobalShape
+    
     let lcl = Shape [ (0, 0) ]
     
     let glb pos = GlobalShape [ pos ]
@@ -118,7 +131,18 @@ module Shape =
         GlobalShape(ps1 @ ps2)
 
     let move (dir:Direction) (GlobalShape(ps)) =
-        GlobalShape (ps |> List.map (move dir))
+        GlobalShape (ps |> List.map (Position.move dir))
+        
+    let toHitBox (GlobalShape(ps)) =
+        match ps with
+        | [] ->
+            raise EmptyGlobalShape
+        | [ p ] ->
+            HitBox.single p
+        | _ ->
+            let xs = ps |> List.map fst   
+            let ys = ps |> List.map snd   
+            HitBox ((List.min xs, List.min ys), (List.max xs, List.max ys))
 
 module Crate =
     let rec apply (rnd:Random) (c:Crate) (v:Vehicle) =
@@ -130,47 +154,52 @@ module Crate =
             then Some { v with health = v.health - damage }
             else None
         | ShapeBonus ->
-            let vs = Shape.toGlb v.pos v.shape
-            let cs = Shape.glb v.pos
-            let vsx = Shape.move Right vs
-            let vsy = Shape.join cs vsx
-            Some { v with shape = Shape.toLcl v.pos vsy }
+            let tl = HitBox.topLeft v.hitBox
+            let gv = Shape.toGlb tl v.shape
+            let gc = Shape.glb tl
+            let gvx = Shape.move Right gv
+            let gvy = Shape.join gc gvx
+            let hb = Shape.toHitBox gvy
+            Some { v with hitBox = hb; shape = Shape.toLcl tl gvy }
         | RandomBonus ->
             if rnd.NextDouble() > 0.5
             then apply rnd { c with bonus = DamageBonus (rnd.Next(1, 5)) } v
             else apply rnd { c with bonus = HealthBonus (rnd.Next(1, 5)) } v
             
     let disappearOverVehicles (vs:Vehicle list) (c:Crate) =
-        match vs |> List.tryFind (fun v -> v.pos = c.pos) with
+        match vs |> List.tryFind (fun v -> HitBox.intersect v.hitBox c.hitBox) with
         | Some _ -> None
         | None -> Some c
     
     let spawn (rnd:Random) size cs =
+        let getCratePosition () =
+            HitBox.single (Position.getRandom rnd size)
+            
         if cs |> List.length < 5 then
             let pr = rnd.Next(0, 100)
             if pr >= 0 && pr < 1
-            then Some { pos = getRandomPosition rnd size; bonus = HealthBonus(rnd.Next(1, 5)) }
+            then Some { hitBox = getCratePosition(); bonus = HealthBonus(rnd.Next(1, 5)) }
             elif pr >= 1 && pr < 2
-            then Some { pos = getRandomPosition rnd size; bonus = DamageBonus(1) }
+            then Some { hitBox = getCratePosition(); bonus = DamageBonus(1) }
             elif pr >= 2 && pr < 3
-            then Some { pos = getRandomPosition rnd size; bonus = ShapeBonus }
+            then Some { hitBox = getCratePosition(); bonus = ShapeBonus }
             elif pr >= 4 && pr < 4
-            then Some { pos = getRandomPosition rnd size; bonus = RandomBonus }
+            then Some { hitBox = getCratePosition(); bonus = RandomBonus }
             else None
         else None
             
 module Bullet =
     let moveBullet (b:Bullet) =
-        Some { b with pos = move b.dir b.pos }
+        Some { b with hitBox = HitBox.move b.dir b.hitBox }
 
     let stopOverBoundaries (s:Size) (b:Bullet) =
-        let px = move b.dir b.pos
-        if outBounds s px
+        let hb = HitBox.move b.dir b.hitBox
+        if HitBox.outBounds s hb
         then None
         else Some b
 
     let rec stopOverVehicles (vs: Vehicle list) (b:Bullet) =
-        match vs |> List.tryFind (fun v -> v.pos = b.pos) with
+        match vs |> List.tryFind (fun v -> HitBox.intersect v.hitBox b.hitBox) with
         | Some _ -> None
         | None -> Some b
     
@@ -186,16 +215,18 @@ module Bullet =
 
 module Vehicle =
     let moveVehicle dir (m:Vehicle) =
-        Movable { m with pos = move dir m.pos }
+        Movable { m with hitBox = HitBox.move dir m.hitBox }
         
     let stopOverBoundaries size dir (m:Vehicle) =
-        if outBounds size (move dir m.pos)
+        if HitBox.outBounds size (HitBox.move dir m.hitBox)
         then Blocked m
         else Movable m
     
     let stopOverVehicles (vs:Vehicle list) dir (m:Vehicle) =
-        let px = move dir m.pos
-        if vs |> List.any (fun v -> v.pos = px) 
+        let hb = HitBox.move dir m.hitBox
+        if vs
+           |> List.filter (fun v -> not (v.id = m.id))
+           |> List.any (fun v -> HitBox.intersect v.hitBox hb) 
         then Blocked m
         else Movable m
 
@@ -205,7 +236,11 @@ module Vehicle =
         else Blocked m
 
     let fire dir (m:Vehicle) =
-        Some [{ Bullet.pos = move dir m.pos; dmg = m.dmg; dir = dir }]
+        let pos =
+            match dir with
+            | Left | Up -> Position.move dir (HitBox.topLeft m.hitBox)
+            | Right | Down -> Position.move dir (HitBox.bottomRight m.hitBox)
+        Some [{ Bullet.hitBox = HitBox.single pos; dmg = m.dmg; dir = dir }]
 
     let fireById id (m:Vehicle) =
         if m.id = id
@@ -213,13 +248,13 @@ module Vehicle =
         else None
 
     let fireOverBoundaries size dir (m:Vehicle) =
-        let px = move dir m.pos
-        if (outBounds size px)
+        let hb = HitBox.move dir m.hitBox
+        if HitBox.outBounds size hb
         then None
         else Some m 
 
     let hitByBullet (bs:Bullet list) (m:Vehicle) =
-        match bs |> List.tryFind (fun b -> b.pos = m.pos) with
+        match bs |> List.tryFind (fun b -> HitBox.intersect b.hitBox m.hitBox) with
         | Some b ->
             if b.dmg < m.health
             then Some { m with health = m.health - b.dmg } 
@@ -227,9 +262,14 @@ module Vehicle =
         | None -> Some m
         
     let takeCrate (rnd:Random) (cs:Crate list) (m:Vehicle) =
-        match cs |> List.tryFind (fun c -> c.pos = m.pos) with
+        match cs |> List.tryFind (fun c -> HitBox.intersect c.hitBox m.hitBox) with
         | Some c -> Crate.apply rnd c m
         | None -> Some m
+        
+    let getColor (rnd:Random) =
+        let ns = Enum.GetNames(typeof<ConsoleColor>)
+        Enum.Parse<ConsoleColor>(ns.[rnd.Next(0, ns.Length - 1)]) 
+
 
 module Movable =
     let ret v = Movable v
@@ -291,8 +331,8 @@ module Game =
     let remVehicle id vs =
         vs |> List.filter (fun v -> not (v.id = id))
         
-    let addVehicle id pos cr vs =
-        let vx = { id = id; dmg = 1; health = 9; pos = pos; shape = Shape.lcl; color = cr }
+    let addVehicle id hb cr vs =
+        let vx = { id = id; dmg = 1; health = 9; hitBox = hb; shape = Shape.lcl; color = cr }
         vx::vs
         
     let empty size =
