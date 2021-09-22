@@ -9,11 +9,36 @@ let decode<'T> (bs:BinarySerializer) =
 let encode (bs:BinarySerializer) =
     bs.Pickle
 
-let print (prev: Game) (game:Game) =
+type UserState = { mutable id: UserId option; mutable hitBox: bool }
+
+let printGT (game:Game) =
     match game.size with
-    |  w, _ ->
+    | w, _ ->
+        Console.ForegroundColor <- ConsoleColor.White
         Console.SetCursorPosition (w + 2, 0)
-        Console.Write $"Game time: {game.time}" 
+        Console.Write $"Game time: {game.time}"
+
+let printHB (prev: Game) (game:Game) =
+    let printHitBox (HitBox ((x1, y1), (x2, y2))) (c:char) (cc:ConsoleColor) =
+        Console.ForegroundColor <- cc
+        for x = x1 to x2 do
+            for y = y1 to y2 do
+                Console.SetCursorPosition (x, y)
+                Console.Write c
+    for v in prev.vehicles do
+        printHitBox v.hitBox ' ' ConsoleColor.Black
+    for b in prev.bullets do
+        printHitBox b.hitBox ' ' ConsoleColor.Black
+    for c in prev.crates do
+        printHitBox c.hitBox ' ' ConsoleColor.Black
+    for v in game.vehicles do
+        printHitBox v.hitBox 'V' ConsoleColor.Red
+    for c in game.crates do
+        printHitBox c.hitBox 'X' ConsoleColor.Green
+    for c in game.bullets do
+        printHitBox c.hitBox 'B' ConsoleColor.Yellow
+
+let print (prev: Game) (game:Game) =
     for v in prev.vehicles do
         let tl = HitBox.topLeft v.hitBox
         match Shape.project tl v.shape with
@@ -62,13 +87,14 @@ let print (prev: Game) (game:Game) =
             Console.ForegroundColor <- ConsoleColor.Gray
             Console.Write '?'
     Console.ForegroundColor <- color
-    
-type UserState = { mutable id: UserId option }
 
 let onAreaEvent (us:UserState) (decode:byte[] -> AreaEvent) (data:byte[]) =
     match decode data with
     | State (prev, game) ->
-        print prev game
+        printGT game
+        if us.hitBox
+        then printHB prev game
+        else print prev game
     | UserEvent (_, UserJoined id) ->
         Console.Clear()
         Console.CursorVisible <- false
@@ -92,7 +118,7 @@ let main _ =
           .WithUrl("http://localhost:5000/server")
           .Build()
     
-    let us = { id = None }
+    let us = { id = None; hitBox = false }
     let bs = BinarySerializer()
     let enc = encode bs
     let dec = decode bs
@@ -150,6 +176,9 @@ let main _ =
             | ConsoleKey.S, _ ->
                 callGameCommand (Fire (id, Up))
                 clearInputChar ()
+            | ConsoleKey.H, _ ->
+                us.hitBox <- not us.hitBox
+                Console.Clear()
             | ConsoleKey.Escape, _ ->
                 callUserCommand (Leave id)
             | _ -> ()

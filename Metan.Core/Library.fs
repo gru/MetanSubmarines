@@ -75,6 +75,13 @@ module Core =
             commands: GameCommand list
         }
 
+module Direction =
+    let inverse = function
+        | Up -> Down
+        | Down -> Up
+        | Left -> Right
+        | Right -> Left
+
 module Position =
     let add (x1, y1) (x2, y2) =
         (x1 + x2, y1 + y2)
@@ -101,9 +108,9 @@ module List =
 
 module HitBox =
     let single p = HitBox (p, p)
-    let topLeft (HitBox(lt, _)) = lt
     let bottomRight (HitBox(_, rb)) = rb
-
+    let topLeft (HitBox(lt, _)) = lt
+    
     let intersect (HitBox((l1, t1), (r1, b1))) (HitBox((l2, t2), (r2, b2))) =
         not (l2 > r1 || r2 < l1 || t2 > b1 || b2 < t1)
         
@@ -121,10 +128,17 @@ module HitBox =
         let tl1 = topLeft hb1
         let tl2 = topLeft hb2
         Position.sub tl2 tl1
+        
+    let join hb1 hb2 =
+        let tl1, tl2 = topLeft hb1, topLeft hb2
+        let tl = (min (fst tl1) (fst tl2), min (snd tl1) (snd tl2))
+        let br1, br2 = bottomRight hb1, bottomRight hb2
+        let br = (max (fst br1) (fst br2), max (snd br1) (snd br2))
+        HitBox (tl, br)
 
 module Shape =
     exception EmptyProjection
-            
+          
     let project pos = function
         | Reflection sl ->
             Projection (sl |> List.map (fun s -> { s with pos = Position.add s.pos pos }))
@@ -133,11 +147,20 @@ module Shape =
         | Projection sl ->
             Reflection (sl |> List.map (fun s -> { s with pos = Position.sub s.pos pos }))
 
+    let normalize = function
+        | Reflection sl as ref ->
+            let minx = sl |> List.map (fun s -> fst s.pos) |> List.min 
+            let miny = sl |> List.map (fun s -> snd s.pos) |> List.min
+            let pos = (min 0 minx, min 0 miny)
+            if minx < 0 || miny < 0
+            then Reflection (sl |> List.map (fun s -> { s with pos = Position.sub s.pos pos }))
+            else ref
+    
     let move dir (Reflection(sl)) =
         Reflection (sl |> List.map (fun s -> { s with pos = Position.move dir s.pos }))
 
     let join (Reflection sl1) (Reflection sl2) =
-        Reflection (sl1 @ sl2)
+        normalize (Reflection (sl1 @ sl2))
     
     let toHitBox proj =
         match proj with
@@ -180,24 +203,23 @@ module Shape =
         applyOne ref pos damageSegment
 
 module Crate =
-    let rec apply (rnd:Random) (c:Crate) (v:Vehicle) =
+    let rec apply (rnd:Random) (dir:Direction) (c:Crate) (v:Vehicle) =
         match c.bonus with
         | HealthBonus health ->
             Some { v with shape = Shape.healAll health v.shape }
         | DamageBonus damage ->
             Some { v with shape = Shape.healAll -damage v.shape }
         | ShapeBonus ->
-            let b = Shape.body (0, 0) 9
-            let r = Shape.move Right v.shape
-            let s = Shape.join b r
-            let tl = HitBox.topLeft v.hitBox
-            let p = Shape.project tl s
-            let hb = Shape.toHitBox p
-            Some { v with hitBox = hb; shape = s }
+            let ref = HitBox.reflect v.hitBox c.hitBox
+            let pos = Position.move dir ref
+            let sx = Shape.join v.shape (Shape.body pos 9)
+            let proj = Shape.project (HitBox.topLeft v.hitBox) sx
+            let hb = Shape.toHitBox proj
+            Some { v with hitBox = hb; shape = sx }
         | RandomBonus ->
             if rnd.NextDouble() > 0.5
-            then apply rnd { c with bonus = DamageBonus (rnd.Next(1, 5)) } v
-            else apply rnd { c with bonus = HealthBonus (rnd.Next(1, 5)) } v
+            then apply rnd dir { c with bonus = DamageBonus (rnd.Next(1, 5)) } v
+            else apply rnd dir { c with bonus = HealthBonus (rnd.Next(1, 5)) } v
           
     let disappearOverVehicles (vs:Vehicle list) (c:Crate) =
         match vs |> List.tryFind (fun v -> HitBox.intersect v.hitBox c.hitBox) with
@@ -297,9 +319,9 @@ module Vehicle =
             Some { m with shape = Shape.damageOne ref b.dmg m.shape }
         | None -> Some m
         
-    let takeCrate (rnd:Random) (cs:Crate list) (m:Vehicle) =
+    let takeCrate (rnd:Random) (dir:Direction) (cs:Crate list) (m:Vehicle) =
         match cs |> List.tryFind (fun c -> HitBox.intersect c.hitBox m.hitBox) with
-        | Some c -> Crate.apply rnd c m
+        | Some c -> Crate.apply rnd dir c m
         | None -> Some m
         
     let getColor (rnd:Random) =
@@ -322,40 +344,50 @@ module Game =
     let rec tick (rnd:Random) (game:Game) (cs:GameCommand list) =
         match cs with
         | Move(vid, dir)::rest ->
-            let pipe = Movable.ret
-                       >> Movable.bind (Vehicle.moveById vid)
-                       >> Movable.bind (Vehicle.stopOverBoundaries game.size dir)
-                       >> Movable.bind (Vehicle.stopOverVehicles game.vehicles dir)
-                       >> Movable.bind (Vehicle.moveVehicle dir)
+            let movePipe =
+                Movable.ret
+                >> Movable.bind (Vehicle.moveById vid)
+                >> Movable.bind (Vehicle.stopOverBoundaries game.size dir)
+                >> Movable.bind (Vehicle.stopOverVehicles game.vehicles dir)
+                >> Movable.bind (Vehicle.moveVehicle dir)
             let vs = game.vehicles
-                     |> List.map pipe
+                     |> List.map movePipe
                      |> List.map Movable.unwind
+            let hitPipe =
+                Option.ret
+                >> Option.bind (Vehicle.takeCrate rnd dir game.crates)
+            let vs = vs
+                     |> List.map hitPipe
+                     |> List.choose id
             tick rnd { game with vehicles = vs } rest
         | Fire(vid, dir)::rest ->
-            let firePipe = Vehicle.fireById vid
-                           >> Option.bind (Vehicle.fireOverBoundaries game.size dir)
-                           >> Option.bind (Vehicle.fire dir)
+            let firePipe =
+                Vehicle.fireById vid
+                >> Option.bind (Vehicle.fireOverBoundaries game.size dir)
+                >> Option.bind (Vehicle.fire dir)
             let bs = game.vehicles
                      |> List.map firePipe
                      |> List.choose id
                      |> List.concat
             tick rnd { game with bullets = game.bullets @ bs } rest
         | Tick::rest ->
-            let movePipe = Option.ret
-                           >> Option.bind (Bullet.stopOverBoundaries game.size)
-                           >> Option.bind (Bullet.stopOverVehicles game.vehicles)
-                           >> Option.bind (Bullet.moveBullet)
+            let movePipe =
+                Option.ret
+                >> Option.bind (Bullet.stopOverBoundaries game.size)
+                >> Option.bind (Bullet.stopOverVehicles game.vehicles)
+                >> Option.bind (Bullet.moveBullet)
             let bs = game.bullets
                      |> List.map movePipe
                      |> List.choose id
-            let hitPipe = Option.ret
-                          >> Option.bind (Vehicle.hitByBullet bs)
-                          >> Option.bind (Vehicle.takeCrate rnd game.crates)
+            let hitPipe =
+                Option.ret
+                >> Option.bind (Vehicle.hitByBullet bs)
             let vs = game.vehicles
                      |> List.map hitPipe
                      |> List.choose id
-            let cratePipe = Option.ret
-                            >> Option.bind (Crate.disappearOverVehicles vs)
+            let cratePipe =
+                Option.ret
+                >> Option.bind (Crate.disappearOverVehicles vs)
             let cx = Crate.spawn rnd game.size game.crates
             let cs = game.crates
                      |> List.map cratePipe
