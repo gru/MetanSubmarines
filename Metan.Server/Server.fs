@@ -126,11 +126,18 @@ module Actors =
                     then awaiting(ax) gx
                     else loop(ax) gx 
         }
-        awaiting Area.empty  { bullets = []; vehicles = []; crates = [
-            { hitBox = HitBox ((10, 10), (10, 10)); bonus = ShapeBonus }
-            { hitBox = HitBox ((20, 20), (20, 20)); bonus = ShapeBonus }
-            { hitBox = HitBox ((30, 20), (30, 20)); bonus = ShapeBonus }
-        ]; size = (Size(50, 25)); time = 0u }
+        awaiting Area.empty  { bullets = []; vehicles = [
+                { id = 2; hitBox = HitBox ((5, 5), (7, 6)); dmg = 1; color = ConsoleColor.Cyan; shape = Reflection [
+                    { pos = (0, 0); kind = Body 9 }
+                    { pos = (1, 0); kind = Body 9 }
+                    { pos = (2, 0); kind = Body 9 }
+                    { pos = (2, 1); kind = Body 9 } ]
+                }
+            ]; crates = [
+                        { hitBox = HitBox ((10, 10), (10, 10)); bonus = ShapeBonus }
+                        { hitBox = HitBox ((20, 20), (20, 20)); bonus = ShapeBonus }
+                        { hitBox = HitBox ((30, 20), (30, 20)); bonus = ShapeBonus }
+            ]; size = (Size(50, 25)); time = 0u }
 
 type ActorService (system:ActorSystem, ep:EventPublisher, appLifetime:IHostApplicationLifetime) =
     interface IHostedService with 

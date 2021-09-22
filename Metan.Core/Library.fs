@@ -190,12 +190,12 @@ module Shape =
             | s -> s
         applyAll ref filterByPos
     
-    let healAll health ref =
+    let healOne pos health ref =
         let healSegment = function
             | { kind = Body current } as s ->
                 { s with kind = Body (min 9 (current + health)) }
-        applyAll ref healSegment
-
+        applyOne ref pos healSegment
+    
     let damageOne pos dmg ref =
         let damageSegment = function
             | { kind = Body current } as s ->
@@ -206,9 +206,11 @@ module Crate =
     let rec apply (rnd:Random) (dir:Direction) (c:Crate) (v:Vehicle) =
         match c.bonus with
         | HealthBonus health ->
-            Some { v with shape = Shape.healAll health v.shape }
+            let ref = HitBox.reflect v.hitBox c.hitBox
+            Some { v with shape = Shape.healOne ref health v.shape }
         | DamageBonus damage ->
-            Some { v with shape = Shape.healAll -damage v.shape }
+            let ref = HitBox.reflect v.hitBox c.hitBox
+            Some { v with shape = Shape.healOne ref -damage v.shape }
         | ShapeBonus ->
             let ref = HitBox.reflect v.hitBox c.hitBox
             let pos = Position.move dir ref
