@@ -79,7 +79,7 @@ module Position =
     let add (x1, y1) (x2, y2) =
         (x1 + x2, y1 + y2)
             
-    let neg (x1, y1) (x2, y2) =
+    let sub (x1, y1) (x2, y2) =
         (x1 - x2, y1 - y2)
         
     let move dir (x, y) =
@@ -90,7 +90,7 @@ module Position =
         | Right -> (x + 1, y)
 
     let getRandom (rnd:Random) ((w, h):Size) =
-        (rnd.Next(0, w), rnd.Next(0, h))
+        (rnd.Next(0, w + 1), rnd.Next(0, h + 1))
 
 module Option =
     let ret v = Some v
@@ -120,7 +120,7 @@ module HitBox =
     let reflect hb1 hb2 =
         let tl1 = topLeft hb1
         let tl2 = topLeft hb2
-        Position.neg tl2 tl1
+        Position.sub tl2 tl1
 
 module Shape =
     exception EmptyProjection
@@ -131,7 +131,7 @@ module Shape =
         
     let reflect pos = function
         | Projection sl ->
-            Reflection (sl |> List.map (fun s -> { s with pos = Position.neg s.pos pos }))
+            Reflection (sl |> List.map (fun s -> { s with pos = Position.sub s.pos pos }))
 
     let move dir (Reflection(sl)) =
         Reflection (sl |> List.map (fun s -> { s with pos = Position.move dir s.pos }))
@@ -198,7 +198,7 @@ module Crate =
             if rnd.NextDouble() > 0.5
             then apply rnd { c with bonus = DamageBonus (rnd.Next(1, 5)) } v
             else apply rnd { c with bonus = HealthBonus (rnd.Next(1, 5)) } v
-            
+          
     let disappearOverVehicles (vs:Vehicle list) (c:Crate) =
         match vs |> List.tryFind (fun v -> HitBox.intersect v.hitBox c.hitBox) with
         | Some _ -> None
