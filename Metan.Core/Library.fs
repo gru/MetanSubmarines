@@ -176,7 +176,7 @@ module Shape =
     let body pos health =
         Reflection [ { pos = pos; kind = Body health } ]
 
-    let intersectOne (Reflection sl1) (pos:Position) =
+    let intersect (Reflection sl1) (pos:Position) =
         sl1 |> List.tryFind (fun s -> s.pos = pos)
         
     let applyAll ref (f:Segment -> Segment) =
@@ -213,8 +213,8 @@ module Crate =
             let ref = HitBox.reflect v.hitBox c.hitBox
             let pos = Position.move dir ref
             let sx = Shape.join v.shape (Shape.body pos 9)
-            let proj = Shape.project (HitBox.topLeft v.hitBox) sx
-            let hb = Shape.toHitBox proj
+            let prj = Shape.project (HitBox.topLeft v.hitBox) sx
+            let hb = Shape.toHitBox prj
             Some { v with hitBox = hb; shape = sx }
         | RandomBonus ->
             if rnd.NextDouble() > 0.5
@@ -223,7 +223,11 @@ module Crate =
           
     let disappearOverVehicles (vs:Vehicle list) (c:Crate) =
         match vs |> List.tryFind (fun v -> HitBox.intersect v.hitBox c.hitBox) with
-        | Some _ -> None
+        | Some v ->
+            let ref = HitBox.reflect v.hitBox c.hitBox
+            if Option.isSome <| Shape.intersect v.shape ref
+            then None
+            else Some c
         | None -> Some c
     
     let spawn (rnd:Random) size cs =
@@ -257,7 +261,7 @@ module Bullet =
         match vs |> List.tryFind (fun v -> HitBox.intersect v.hitBox b.hitBox) with
         | Some v ->
             let ref = HitBox.reflect v.hitBox b.hitBox 
-            match Shape.intersectOne v.shape ref with
+            match Shape.intersect v.shape ref with
             | Some _ -> None
             | None -> Some b 
         | None -> Some b
@@ -321,7 +325,11 @@ module Vehicle =
         
     let takeCrate (rnd:Random) (dir:Direction) (cs:Crate list) (m:Vehicle) =
         match cs |> List.tryFind (fun c -> HitBox.intersect c.hitBox m.hitBox) with
-        | Some c -> Crate.apply rnd dir c m
+        | Some c ->
+            let ref = HitBox.reflect m.hitBox c.hitBox
+            if Option.isSome <| Shape.intersect m.shape ref 
+            then Crate.apply rnd dir c m
+            else Some m
         | None -> Some m
         
     let getColor (rnd:Random) =

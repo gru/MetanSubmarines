@@ -1,6 +1,7 @@
 ﻿namespace Metan.Server
 
 open System
+open System.Diagnostics
 open System.Threading.Tasks
 open MBrace.FsPickler
 open Metan.Core
