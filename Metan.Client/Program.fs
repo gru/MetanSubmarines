@@ -142,8 +142,9 @@ let main _ =
         | ConsoleKey.Escape -> Environment.Exit 0
         | _ -> connected <- tryConnect
     
-    let callUserCommand cmd = call connection enc (UserCommand ("", cmd))
-    let callGameCommand cmd = call connection enc (AreaCommand cmd) 
+    let callAreaCommand cmd = call connection enc cmd
+    let callUserCommand cmd = callAreaCommand (UserCommand ("", cmd))
+    let callGameCommand cmd = callAreaCommand (AreaCommand cmd) 
     
     callUserCommand Join
     
@@ -155,31 +156,34 @@ let main _ =
             
         match us.id with
         | Some id ->
-            match info.Key, info.KeyChar with
-            | ConsoleKey.LeftArrow, _ ->
+            match info.Key with
+            | ConsoleKey.LeftArrow ->
                 callGameCommand (Move (id, Left))
-            | ConsoleKey.RightArrow, _ ->
+            | ConsoleKey.RightArrow ->
                 callGameCommand (Move (id, Right))
-            | ConsoleKey.UpArrow, _ ->
+            | ConsoleKey.UpArrow ->
                 callGameCommand (Move (id, Down))
-            | ConsoleKey.DownArrow, _ ->
+            | ConsoleKey.DownArrow ->
                 callGameCommand (Move (id, Up))
-            | ConsoleKey.A, _ ->
+            | ConsoleKey.A ->
                 callGameCommand (Fire (id, Left))
                 clearInputChar ()
-            | ConsoleKey.D, _ ->
+            | ConsoleKey.D ->
                 callGameCommand (Fire (id, Right))
                 clearInputChar ()
-            | ConsoleKey.W, _ ->
+            | ConsoleKey.W ->
                 callGameCommand (Fire (id, Down))
                 clearInputChar ()
-            | ConsoleKey.S, _ ->
+            | ConsoleKey.S ->
                 callGameCommand (Fire (id, Up))
                 clearInputChar ()
-            | ConsoleKey.H, _ ->
+            | ConsoleKey.H ->
                 us.hitBox <- not us.hitBox
                 Console.Clear()
-            | ConsoleKey.Escape, _ ->
+            | ConsoleKey.B ->
+                callAreaCommand JoinBot
+                clearInputChar ()
+            | ConsoleKey.Escape ->
                 callUserCommand (Leave id)
             | _ -> ()
         | None ->

@@ -1,7 +1,9 @@
 ﻿namespace Metan.Server
 
 open System
-open System.Diagnostics
+open System
+open System
+open System
 open System.Threading.Tasks
 open MBrace.FsPickler
 open Metan.Core
@@ -39,8 +41,7 @@ type SignalRHub () =
             match dec msg with
             | UserCommand (_, uc) ->
                 UserCommand (this.Context.ConnectionId, uc)
-            | AreaCommand _ as ac ->
-                ac
+            | cmd -> cmd
         this.AreaActor <! cmd 
         Task.CompletedTask
          
@@ -60,6 +61,44 @@ type EventPublisher (hub:IHubContext<SignalRHub>) =
          
 [<AutoOpen>]
 module Actors =
+    let rec bot (me:Actor<AreaEvent>) =
+        let rnd = Random()
+        let replyAndSwitch f1 f2 (p1, p2) =
+            f1 p2; f2 p1
+        let rec connecting () =
+            actor {
+                let! msg = me.Receive()
+                match msg with
+                | UserEvent (_, UserJoined id) ->
+                    become (searching(id))
+                | _ -> ignored()
+            }
+        and searching id = function
+            | State (_, game) ->
+                AI.searchCrate rnd game id
+                |> replyAndSwitch (reply (me.Sender())) (switch id)
+            | _ -> ignored() 
+        and moving id pos = function
+            | State (_, game) ->
+                AI.move game id pos
+                |> replyAndSwitch (reply (me.Sender())) (switch id) 
+            | _ -> ignored() 
+        and idle id till = function
+            | State (_, game) ->
+                AI.idle game till
+                |> replyAndSwitch (reply (me.Sender())) (switch id)
+            | _ -> ignored() 
+        and reply areaRef commands =
+            for cmd in commands do
+                areaRef <! cmd
+        and switch id state =
+            printfn $"%A{state}"
+            match state with
+            | SearchCrate -> become (searching id) 
+            | MoveTo pos -> become (moving id pos)
+            | Idle till -> become (idle id till)
+        connecting()
+    
     let rec client (ep:EventPublisher) (me:Actor<AreaEvent>) =
         let rec connecting() = actor {
             let! message = me.Receive()
@@ -102,8 +141,8 @@ module Actors =
             match command with
             | AreaCommand Tick ->
                 let gx = Game.tick rnd game (Tick :: area.commands)
-                let childrenRef = select me "client_*"
-                childrenRef <! State (game, gx)
+                let ref = select me "client_*"
+                ref <! State (game, gx)
                 return! loop({ area with commands = [] }) gx
             | AreaCommand cmd ->
                 return! loop({ area with commands = cmd::area.commands }) game
@@ -112,32 +151,31 @@ module Actors =
                 let vc = Vehicle.getColor rnd
                 let vp = Position.getRandom rnd game.size
                 let vx = game.vehicles |> Game.addVehicle id (HitBox.single vp) vc
-                let childRef = spawn me $"client_{id}" (props (client ep))
-                childRef <! UserEvent (cnn, UserJoined id)
+                let ref = props (client ep)
+                          |> spawn me $"client_{id}"
+                ref <! UserEvent (cnn, UserJoined id)
                 return! loop({area with users = id::area.users }) { game with vehicles = vx }
             | UserCommand (cnn, Leave id) ->
                 let ux = area.users |> Area.remUser id
                 let vx = game.vehicles |> Game.remVehicle id
                 let ax = { area with users = ux }
                 let gx = { game with vehicles = vx }
-                let childRef = select me $"client_{id}"
-                childRef <! UserEvent (cnn, UserLeft)
+                let ref = select me $"client_{id}"
+                ref <! UserEvent (cnn, UserLeft)
                 return! if ux |> List.isEmpty
                     then awaiting(ax) gx
-                    else loop(ax) gx 
+                    else loop(ax) gx
+            | JoinBot ->
+                let id = area.users |> Area.addUser
+                let vc = Vehicle.getColor rnd
+                let vp = Position.getRandom rnd game.size
+                let vx = game.vehicles |> Game.addVehicle id (HitBox.single vp) vc
+                let ref = props bot
+                          |> spawn me $"client_{id}"
+                ref <! UserEvent ("", UserJoined id)
+                return! loop({area with users = id::area.users }) { game with vehicles = vx }
         }
-        awaiting Area.empty  { bullets = []; vehicles = [
-                { id = 2; hitBox = HitBox ((5, 5), (7, 6)); dmg = 1; color = ConsoleColor.Cyan; shape = Reflection [
-                    { pos = (0, 0); kind = Body 9 }
-                    { pos = (1, 0); kind = Body 9 }
-                    { pos = (2, 0); kind = Body 9 }
-                    { pos = (2, 1); kind = Body 9 } ]
-                }
-            ]; crates = [
-                        { hitBox = HitBox ((10, 10), (10, 10)); bonus = ShapeBonus }
-                        { hitBox = HitBox ((20, 20), (20, 20)); bonus = ShapeBonus }
-                        { hitBox = HitBox ((30, 20), (30, 20)); bonus = ShapeBonus }
-            ]; size = (Size(50, 25)); time = 0u }
+        awaiting Area.empty (Game.empty (Size(50, 25)))
 
 type ActorService (system:ActorSystem, ep:EventPublisher, appLifetime:IHostApplicationLifetime) =
     interface IHostedService with 

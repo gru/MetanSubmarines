@@ -9,6 +9,7 @@ module Core =
     type Direction = Up | Down | Left | Right
     type Damage = int
     type Health = int
+    type Time = uint
     type SegmentKind =
         | Body of Health
     type Segment =
@@ -53,7 +54,7 @@ module Core =
           vehicles:Vehicle list
           crates:Crate list
           size: Size
-          time: uint
+          time: Time
         }
     type UserId = int
     type ConnectionId = string
@@ -67,6 +68,7 @@ module Core =
         | Join
         | Leave of UserId
     type AreaCommand =
+        | JoinBot
         | UserCommand of ConnectionId * UserCommand
         | AreaCommand of GameCommand
     type Area =
@@ -74,7 +76,14 @@ module Core =
             users: UserId list
             commands: GameCommand list
         }
+        
+module Option =
+    let ret v = Some v
 
+module List =
+    let any f vs =
+        vs |> List.tryFind f |> Option.isSome
+        
 module Direction =
     let inverse = function
         | Up -> Down
@@ -98,13 +107,6 @@ module Position =
 
     let getRandom (rnd:Random) ((w, h):Size) =
         (rnd.Next(0, w + 1), rnd.Next(0, h + 1))
-
-module Option =
-    let ret v = Some v
-
-module List =
-    let any f vs =
-        vs |> List.tryFind f |> Option.isSome  
 
 module HitBox =
     let single p = HitBox (p, p)
@@ -135,6 +137,12 @@ module HitBox =
         let br1, br2 = bottomRight hb1, bottomRight hb2
         let br = (max (fst br1) (fst br2), max (snd br1) (snd br2))
         HitBox (tl, br)
+        
+    let expand l (HitBox(tl, br)) =
+        HitBox (Position.sub tl (l, l), Position.add br (l, l))
+
+    let crop (w, h) (HitBox((l1, t1), (r1, b1))) =
+         HitBox ((max 0 l1, max 0 t1), (min w r1, min h b1))
 
 module Shape =
     exception EmptyProjection
@@ -147,6 +155,9 @@ module Shape =
         | Projection sl ->
             Reflection (sl |> List.map (fun s -> { s with pos = Position.sub s.pos pos }))
 
+    let head = function
+        | Projection sl -> sl |> List.head
+    
     let normalize = function
         | Reflection sl as ref ->
             let minx = sl |> List.map (fun s -> fst s.pos) |> List.min 
