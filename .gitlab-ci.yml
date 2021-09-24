@@ -1,0 +1,33 @@
+variables:
+  DOCKER_HOST: tcp://192.168.1.69:2375
+  DOCKER_DRIVER: overlay2
+
+stages:
+  - Build-WebHost
+  - Deploy-WebHost
+
+build-webhost:
+  stage: Build-WebHost
+  when: manual
+  image: alpine:latest
+  tags:
+    - dind
+  before_script:
+    - apk add docker
+  script:
+    - docker login $CI_REGISTRY -u $REGISTRY_USER -p $REGISTRY_PASSWORD
+    - docker build -t "${CI_REGISTRY_IMAGE}/metan-submarines_webhost:latest" . -f ./Metan.Server/Dockerfile
+    - docker push "${CI_REGISTRY_IMAGE}/metan-submarines_webhost:latest"
+
+deploy-webhost:
+  stage: Deploy-WebHost
+  when: manual
+  image: alpine:latest
+  tags:
+    - dind
+  before_script:
+    - apk add docker
+  script:
+    - docker login $CI_REGISTRY -u $REGISTRY_USER -p $REGISTRY_PASSWORD
+    - docker stop metan-submarines_webhost || true && docker rm metan-submarines_webhost || true;
+    - docker run -d -p 22001:80 --name=metan-submarines_webhost -v /mnt/kali-nfs/logs/projects/metan-submerines/:/logs/metan-submerines --env ASPNETCORE_ENVIRONMENT=production --restart=always "${CI_REGISTRY_IMAGE}/metan-submarines_webhost:latest"
