@@ -40,8 +40,7 @@ let printHB (prev: Game) (game:Game) =
 
 let print (prev: Game) (game:Game) =
     for v in prev.vehicles do
-        let tl = HitBox.topLeft v.hitBox
-        match Shape.project tl v.shape with
+        match Projection.project v.hitBox v.shape with
         | Projection ps ->
             for p in ps do
                 Console.SetCursorPosition p.pos
@@ -57,14 +56,15 @@ let print (prev: Game) (game:Game) =
     let color = Console.ForegroundColor     
     for v in game.vehicles do
         Console.ForegroundColor <- v.color
-        let tl = HitBox.topLeft v.hitBox
-        match Shape.project tl v.shape with
+        match Projection.project v.hitBox v.shape with
         | Projection sl ->
             for s in sl do
                 Console.SetCursorPosition s.pos
                 match s.kind with
                 | Body health ->
                     Console.Write health
+                | Dmg dmg ->
+                    Console.Write dmg
     Console.ForegroundColor <- ConsoleColor.Yellow
     for b in game.bullets do
         let tl = HitBox.topLeft b.hitBox
