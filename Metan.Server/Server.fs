@@ -41,6 +41,10 @@ type SignalRHub () =
             | cmd -> cmd
         this.AreaActor <! cmd 
         Task.CompletedTask
+        
+     override this.OnDisconnectedAsync(_:Exception) =
+         this.AreaActor <! UserCommand(this.Context.ConnectionId, Leave(-1))
+         Task.CompletedTask
          
 type EventPublisher (hub:IHubContext<SignalRHub>) =
      let bs = BinarySerializer()
@@ -154,33 +158,27 @@ module Actors =
             | AreaCommand cmd ->
                 return! loop({ area with commands = cmd::area.commands }) game
             | UserCommand (cnn, Join) ->
-                let id = area.users |> Area.addUser
-                let vc = Vehicle.getColor rnd
-                let vp = Position.getRandom rnd game.size
-                let vx = game.vehicles |> Game.addVehicle id (HitBox.single vp) vc
+                let id, ax = area |> Area.addUser cnn
+                let gx = game |> Game.addVehicle rnd id
                 let ref = props (client ep)
                           |> spawn me $"client_{id}"
                 ref <! UserEvent (cnn, UserJoined id)
-                return! loop({area with users = id::area.users }) { game with vehicles = vx }
+                return! loop(ax) gx
             | UserCommand (cnn, Leave id) ->
-                let ux = area.users |> Area.remUser id
-                let vx = game.vehicles |> Game.remVehicle id
-                let ax = { area with users = ux }
-                let gx = { game with vehicles = vx }
-                let ref = select me $"client_{id}"
+                let idx, ax = area |> Area.remUser cnn id
+                let gx = game |> Game.remVehicle idx
+                let ref = select me $"client_{idx}"
                 ref <! UserEvent (cnn, UserLeft)
-                return! if ux |> List.isEmpty
+                return! if gx.vehicles |> List.isEmpty
                     then awaiting(ax) gx
                     else loop(ax) gx
             | JoinBot ->
-                let id = area.users |> Area.addUser
-                let vc = Vehicle.getColor rnd
-                let vp = Position.getRandom rnd game.size
-                let vx = game.vehicles |> Game.addVehicle id (HitBox.single vp) vc
+                let id, ax = area |> Area.addUser ""
+                let gx = game |> Game.addVehicle rnd id
                 let ref = props bot
                           |> spawn me $"client_{id}"
                 ref <! UserEvent ("", UserJoined id)
-                return! loop({area with users = id::area.users }) { game with vehicles = vx }
+                return! loop(ax) gx
         }
         awaiting Area.empty (Game.empty (Size(50, 25)))
 

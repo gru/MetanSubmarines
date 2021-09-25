@@ -82,6 +82,7 @@ module Core =
         {
             users: UserId list
             commands: GameCommand list
+            connections: Map<ConnectionId, UserId>
         }
         
 module Option =
@@ -518,23 +519,37 @@ module Game =
             tick rnd { game with bullets = bs; vehicles = vs; crates = cs; time = game.time + 1u } rest
         | [] -> game
         
-    let remVehicle id vs =
-        vs |> List.filter (fun v -> not (v.id = id))
+    let addVehicle rnd id game =
+        let vx = {
+            id = id
+            dmg = 1
+            hitBox = HitBox.single (Position.getRandom rnd game.size)
+            shape = Reflection.createWith (Body 9) [(0, 0)]
+            color = Vehicle.getColor rnd
+        }
+        { game with vehicles = vx::game.vehicles }
         
-    let addVehicle id hb cr vs =
-        let vx = { id = id; dmg = 1; hitBox = hb; shape = Reflection.createWith (Body 9) [(0, 0)]; color = cr }
-        vx::vs
+    let remVehicle id game =
+        { game with vehicles = game.vehicles |> List.filter (fun v -> not (v.id = id)) }
         
     let empty size =
         { bullets = []; vehicles = []; crates = []; size = size; time = 0u }
        
 module Area =
-    let addUser us =
-        if not (us |> List.isEmpty)
-        then us |> List.max |> (+) 1
-        else 1
+    let empty = { users = []; commands = []; connections = Map.empty }
+    
+    let addUser cnn area =
+        let id =
+            if not (area.users |> List.isEmpty)
+            then area.users |> List.max |> (+) 1
+            else 1
+        id, { area with users = id::area.users; connections = area.connections |> Map.add cnn id }
 
-    let remUser u us =
-        us |> List.filter (fun ux -> not (ux = u))
-        
-    let empty = { users = []; commands = [] }
+    let remUser cnn id area =
+        let idx =
+            match area.connections |> Map.tryFind cnn  with
+            | Some found -> found
+            | None -> id
+        idx,
+        { area with users = area.users |> List.filter (fun ux -> not (ux = idx))
+                    connections = area.connections |> Map.remove cnn }
