@@ -411,8 +411,8 @@ module Vehicle =
 
     let fireOverBoundaries size dir (m:Vehicle) =
         if HitBox.tryMove size dir m.hitBox
-        then None
-        else Some m 
+        then Some m 
+        else None
 
     let hitByBullet (bs:Bullet list) (m:Vehicle) =
         match bs |> List.tryFind (fun b -> HitBox.intersect b.hitBox m.hitBox) with

@@ -4,10 +4,12 @@ open System
 
 type BotState =
     | SearchCrate
-    | MoveTo of Position * Position * uint
+    | MoveTo of Position * Position
     | Idle of Time
 
 module AI =
+    exception InvalidState
+    
     let private findById id game =
         game.vehicles |> List.find (fun v -> v.id = id)
     
@@ -29,29 +31,37 @@ module AI =
             match cr with
             | Some c -> HitBox.topLeft c.hitBox
             | None -> Position.getRandom rnd game.size
-        MoveTo(pos, HitBox.topLeft me.hitBox, 0u), []
+        MoveTo(pos, (0, 0)), []
         
-    let move game id pos =
-        let me = findById id game
-        let pr = Projection.project me.hitBox me.shape
-        if pr |> contains pos then
-            Idle (game.time + 20u), []
-        else
-            let tl = Projection.topLeft pr
-            let lx = (fst tl) - (fst pos)
-            let ly = (snd tl) - (snd pos)
-            let dx =
-                if abs lx > abs ly then
-                    if lx > 0
-                    then Left
-                    else Right
+    let move rnd game id = function
+        | MoveTo(pos, prev) ->
+            let me = findById id game
+            if (HitBox.topLeft me.hitBox) = prev
+            then
+                MoveTo(Position.getRandom rnd game.size, (0, 0)), []
+            else
+                let pr = Projection.project me.hitBox me.shape
+                if pr |> contains pos then
+                    Idle (game.time + 20u), []
                 else
-                    if ly < 0
-                    then Up
-                    else Down
-            (MoveTo (pos, HitBox.topLeft me.hitBox, 0u)), [AreaCommand(Move(me.id, dx))]
+                    let tl = Projection.topLeft pr
+                    let lx = (fst tl) - (fst pos)
+                    let ly = (snd tl) - (snd pos)
+                    let dx =
+                        if abs lx > abs ly then
+                            if lx > 0
+                            then Left
+                            else Right
+                        else
+                            if ly < 0
+                            then Up
+                            else Down
+                    (MoveTo (pos, HitBox.topLeft me.hitBox)), [AreaCommand(Move(me.id, dx))]
+        | _ -> raise InvalidState;
         
-    let idle game till =
-        if game.time = till
-        then SearchCrate, []
-        else Idle till, []
+    let idle game = function
+        | Idle till ->
+            if game.time = till
+            then SearchCrate, []
+            else Idle till, []
+        | _ -> raise InvalidState

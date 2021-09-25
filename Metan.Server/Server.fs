@@ -75,14 +75,14 @@ module Actors =
                 AI.searchCrate rnd game id
                 |> replyAndSwitch (reply (me.Sender())) (switch id)
             | _ -> ignored() 
-        and moving id pos = function
+        and moving id state = function
             | State (_, game) ->
-                AI.move game id pos
+                AI.move rnd game id state
                 |> replyAndSwitch (reply (me.Sender())) (switch id) 
             | _ -> ignored() 
-        and idle id till = function
+        and idle id state = function
             | State (_, game) ->
-                AI.idle game till
+                AI.idle game state
                 |> replyAndSwitch (reply (me.Sender())) (switch id)
             | _ -> ignored() 
         and reply areaRef commands =
@@ -90,10 +90,10 @@ module Actors =
                 areaRef <! cmd
         and switch id state =
             printfn $"%A{state}"
-            match state with
-            | SearchCrate -> become (searching id) 
-            | MoveTo (pos, _, _) -> become (moving id pos)
-            | Idle till -> become (idle id till)
+            become (match state with
+                    | SearchCrate -> searching id 
+                    | MoveTo _ -> moving id state
+                    | Idle _ -> idle id state)
         connecting()
     
     let rec client (ep:EventPublisher) (me:Actor<AreaEvent>) =
