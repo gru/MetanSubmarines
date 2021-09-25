@@ -150,6 +150,10 @@ module Reflection =
         { Segment.pos = p; kind = Nothing }
         |> single
 
+    let isEmpty = function
+        | Reflection [] -> true
+        | _ -> false
+    
     let applyAll ref f =
         match ref with
         | Reflection sl ->
@@ -165,7 +169,7 @@ module Reflection =
                     | None -> s1 ]
             create sl
        
-    let filterAll ref f =
+    let filterAll f ref =
         match ref with
         | Reflection sl ->
             Reflection (sl |> List.filter (fun s -> f s.kind))
@@ -264,7 +268,10 @@ module SegmentKind =
     let heal health = function
         | Body current -> Body (min 9 (current + health))
         | b -> b
-   
+    let dead = function
+        | Body current -> current > 0
+        | _ -> false
+    
 module Crate =
     open SegmentKind
     
@@ -419,8 +426,11 @@ module Vehicle =
         | Some b ->
             let vrx = Projection.project b.hitBox b.shape
                       |> Projection.reflect m.hitBox
-                      |> Reflection.applyMatched (damage b.dmg) m.shape 
-            Some { m with shape = vrx }
+                      |> Reflection.applyMatched (damage b.dmg) m.shape
+                      |> Reflection.filterAll dead
+            if (Reflection.isEmpty vrx)
+            then None
+            else Some { m with shape = vrx } 
         | None -> Some m
         
     let takeCrate (rnd:Random) (s:Size) (dir:Direction) (cs:Crate list) (m:Vehicle) =

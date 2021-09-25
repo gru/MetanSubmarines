@@ -60,6 +60,8 @@ type EventPublisher (hub:IHubContext<SignalRHub>) =
 module Actors =
     let rec bot (me:Actor<AreaEvent>) =
         let rnd = Random()
+        let tryFindMe id game =
+            game.vehicles |> List.tryFind (fun v -> v.id = id)
         let replyAndSwitch f1 f2 (p1, p2) =
             f1 p2; f2 p1
         let rec connecting () =
@@ -72,18 +74,27 @@ module Actors =
             }
         and searching id = function
             | State (_, game) ->
-                AI.searchCrate rnd game id
-                |> replyAndSwitch (reply (me.Sender())) (switch id)
+                match game |> tryFindMe id with
+                | Some v ->
+                    AI.searchCrate rnd game v
+                    |> replyAndSwitch (reply (me.Sender())) (switch id)
+                | None -> stop()
             | _ -> ignored() 
         and moving id state = function
             | State (_, game) ->
-                AI.move rnd game id state
-                |> replyAndSwitch (reply (me.Sender())) (switch id) 
+                match game |> tryFindMe id with
+                | Some v ->
+                    AI.move rnd game v state
+                    |> replyAndSwitch (reply (me.Sender())) (switch id)
+                | None -> stop()
             | _ -> ignored() 
         and idle id state = function
             | State (_, game) ->
-                AI.idle game state
-                |> replyAndSwitch (reply (me.Sender())) (switch id)
+                match game |> tryFindMe id with
+                | Some _ ->
+                    AI.idle game state
+                    |> replyAndSwitch (reply (me.Sender())) (switch id)
+                | None -> stop() 
             | _ -> ignored() 
         and reply areaRef commands =
             for cmd in commands do

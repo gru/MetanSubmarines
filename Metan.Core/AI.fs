@@ -10,9 +10,6 @@ type BotState =
 module AI =
     exception InvalidState
     
-    let private findById id game =
-        game.vehicles |> List.find (fun v -> v.id = id)
-    
     let private findClosestCrate cs hb =
         cs |> List.filter (fun c -> HitBox.intersect c.hitBox hb)
            |> List.tryHead
@@ -21,8 +18,7 @@ module AI =
         | Projection sl ->
             sl |> List.map Reflection.getPos |> List.contains pos
         
-    let searchCrate rnd game id =
-        let me = findById id game
+    let searchCrate rnd game (me:Vehicle) =
         let cr = me.hitBox
                  |> HitBox.expand 10
                  |> HitBox.crop game.size
@@ -33,9 +29,8 @@ module AI =
             | None -> Position.getRandom rnd game.size
         MoveTo(pos, (0, 0)), []
         
-    let move rnd game id = function
+    let move rnd game (me:Vehicle) = function
         | MoveTo(pos, prev) ->
-            let me = findById id game
             if (HitBox.topLeft me.hitBox) = prev
             then
                 MoveTo(Position.getRandom rnd game.size, (0, 0)), []
