@@ -134,7 +134,6 @@ module Actors =
             TimeSpan.Zero (TimeSpan.FromSeconds 0.1) me.Self (AreaCommand Tick) |> ignore
 
         let rnd = Random()
-        
         let rec awaiting area game = actor {
             let! command = me.Receive()
             match command with

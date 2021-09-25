@@ -407,8 +407,8 @@ module Vehicle =
     let fire dir (m:Vehicle) =
         let pos =
             match dir with
-            | Left | Up -> Position.move dir (HitBox.topLeft m.hitBox)
-            | Right | Down -> Position.move dir (HitBox.bottomRight m.hitBox)
+            | Left | Down -> Position.move dir (HitBox.topLeft m.hitBox)
+            | Right | Up -> Position.move dir (HitBox.bottomRight m.hitBox)
         Some [ Bullet.create dir pos m.dmg ]
 
     let fireById id (m:Vehicle) =
@@ -428,9 +428,7 @@ module Vehicle =
                       |> Projection.reflect m.hitBox
                       |> Reflection.applyMatched (damage b.dmg) m.shape
                       |> Reflection.filterAll dead
-            if (Reflection.isEmpty vrx)
-            then None
-            else Some { m with shape = vrx } 
+            Some { m with shape = vrx } 
         | None -> Some m
         
     let takeCrate (rnd:Random) (s:Size) (dir:Direction) (cs:Crate list) (m:Vehicle) =
@@ -442,6 +440,11 @@ module Vehicle =
             then Crate.apply rnd s dir c m
             else Some m
         | None -> Some m
+        
+    let filterDead (m:Vehicle) =
+        if (m.shape |> Reflection.filterAll dead |> Reflection.isEmpty)
+        then None
+        else Some m
         
     let getColor (rnd:Random) =
         let ns = Enum.GetNames(typeof<ConsoleColor>)
@@ -497,19 +500,20 @@ module Game =
             let bs = game.bullets
                      |> List.map movePipe
                      |> List.choose id
-            let hitPipe =
-                Option.ret
-                >> Option.bind (Vehicle.hitByBullet bs)
-            let vs = game.vehicles
-                     |> List.map hitPipe
-                     |> List.choose id
             let cratePipe =
                 Option.ret
-                >> Option.bind (Crate.disappearOverVehicles vs)
+                >> Option.bind (Crate.disappearOverVehicles game.vehicles)
             let cx = Crate.spawn rnd game.size game.crates
             let cs = game.crates
                      |> List.map cratePipe
                      |> List.append [cx]
+                     |> List.choose id
+            let hitPipe =
+                Option.ret
+                >> Option.bind (Vehicle.hitByBullet bs)
+                >> Option.bind (Vehicle.filterDead)
+            let vs = game.vehicles
+                     |> List.map hitPipe
                      |> List.choose id
             tick rnd { game with bullets = bs; vehicles = vs; crates = cs; time = game.time + 1u } rest
         | [] -> game
