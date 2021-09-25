@@ -1,16 +1,13 @@
 ﻿namespace Metan.Server
 
 open System
-open System
-open System
-open System
 open System.Threading.Tasks
-open MBrace.FsPickler
-open Metan.Core
 open Microsoft.AspNetCore.SignalR
 open Microsoft.Extensions.Hosting
 open Akka.Actor
 open Akkling
+open MBrace.FsPickler
+open Metan.Core
 
 module Serialization =
     let decode<'T> (bs:BinarySerializer) =

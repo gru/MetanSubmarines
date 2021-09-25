@@ -1,12 +1,10 @@
 module Tests
 
 open System
-open System.Collections.Generic
 open Xunit
 open Metan.Core
 
 let b9 = Body 9
-let d9 = Dmg 9
 let damage dmg b =
     match b with
     | Body h -> Body (h - dmg)
@@ -49,27 +47,7 @@ let ``Reflection single should create reflection`` () =
 let ``Reflection create should create reflection and sort positions`` () =
     Assert.Equal(Reflection.createWith b9 [(0, 0); (1, 1); (2, 2)], Reflection.createWith b9 [(1, 1); (0, 0); (2, 2)])
     Assert.Equal(Reflection.createWith b9 [(1, 3); (2, 2); (3, 1)], Reflection.createWith b9 [(1, 3); (2, 2); (3, 1)])
-
-
-[<Fact>]
-let ``Reflection normalize should remove negative positions`` () =
-    Assert.Equal(Reflection.createWith b9 [(0, 1); (1, 0); (1, 1)],
-                 Reflection.normalize (Reflection.createWith b9 [(-1, -1); (0, -1); (0, -2)]))
-
-[<Fact>]
-let ``Reflection join should join and normalize reflections`` () =
-    Assert.Equal(Reflection.createWith b9 [(0, 0); (1, 0); (2, 1)],
-        Reflection.join
-            (Reflection.createWith b9 [(-2, -1); (-1, -1)])
-            (Reflection.createWith b9 [(0, 0) ]))
-    
-[<Fact>]
-let ``Reflection topLeft should return top left position`` () =
-    Assert.Equal((0, 0), Reflection.topLeft (Reflection.createWith b9 [(0, 0); (0, 1); (1, 0)]))
-    Assert.Equal((0, 1), Reflection.topLeft (Reflection.createWith b9 [(0, 1); (1, 0); (1, 1)]))
-    Assert.Equal((10, 0), Reflection.topLeft (Reflection.createWith b9 [(11, 1); (10, 0); (12, 1)]))
-    Assert.Equal((0, 10), Reflection.topLeft (Reflection.createWith b9 [(1, 1); (0, 10); (2, 1)]))
-    
+      
 [<Fact>]
 let ``HitBox single should return one point hitBox`` () =
     Assert.Equal(HitBox ((2, 1), (2, 1)), HitBox.single (2, 1))
@@ -112,14 +90,7 @@ let ``HitBox outBounds should return proper value`` () =
     Assert.True(HitBox.outBounds (10, 10) (HitBox((0, 0), (11, 11))))
     Assert.True(HitBox.outBounds (10, 10) (HitBox((1, 1), (09, 11))))
     Assert.True(HitBox.outBounds (10, 10) (HitBox((1, 1), (11, 09))))
-    
-[<Fact>]
-let ``HitBox reflect should return proper value`` () =
-    Assert.Equal<IEnumerable<int * int>>([(0, 0)], HitBox.reflect (HitBox((0, 0), (0, 0))) (HitBox((0, 0), (0, 0))))
-    Assert.Equal<IEnumerable<int * int>>([(0, 0)], HitBox.reflect (HitBox((30, 20), (30, 20))) (HitBox((30, 20), (30, 20))))
-    Assert.Equal<IEnumerable<int * int>>([(2, 2)], HitBox.reflect (HitBox((0, 0), (2, 2))) (HitBox((2, 2), (2, 2))))
-    Assert.Equal<IEnumerable<int * int>>([(1, 1); (1, 2); (2, 1); (2, 2)], HitBox.reflect (HitBox((0, 0), (1, 1))) (HitBox((1, 1), (2, 2))))
-    
+       
 [<Fact>]
 let ``HitBox join should join two hitBoxes`` () =
     Assert.Equal(HitBox((0, 0), (0, 0)), HitBox.join (HitBox((0, 0), (0, 0))) (HitBox((0, 0), (0, 0))))
@@ -152,9 +123,9 @@ let ``Projection apply matched should affect matched segments`` () =
             { pos = (0, 1); kind = Body 9 }
         ],
         Reflection.applyMatched
+            (damage 1)
             (Reflection.createWith b9 [(0, 0); (0, 1)])
-            [(0, 0); (0, 2)]
-            (damage 1))
+            (Reflection.createWith b9 [(0, 0); (0, 2)]))
 
 [<Fact>]
 let ``Projection applyAll should affect all segments`` () =
@@ -166,3 +137,8 @@ let ``Projection applyAll should affect all segments`` () =
         Reflection.applyAll 
             (Reflection.createWith b9 [(0, 0); (0, 1)])
             (damage 1))
+    
+[<Fact>]
+let ``Projection applyAll should affect all segments1`` () =
+    Assert.Equal((1, 1), AI.shrink (1, 1))
+    Assert.Equal((1, 1), AI.shrink (2, 2))

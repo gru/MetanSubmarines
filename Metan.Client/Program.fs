@@ -63,8 +63,7 @@ let print (prev: Game) (game:Game) =
                 match s.kind with
                 | Body health ->
                     Console.Write health
-                | Dmg dmg ->
-                    Console.Write dmg
+                | Nothing -> ()
     Console.ForegroundColor <- ConsoleColor.Yellow
     for b in game.bullets do
         let tl = HitBox.topLeft b.hitBox
