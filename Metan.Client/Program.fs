@@ -110,11 +110,18 @@ let call (c:HubConnection) (encode:AreaCommand -> byte[]) (cmd:AreaCommand) =
     |> Async.RunSynchronously
 
 [<EntryPoint>]
-let main _ =
+let main argv =
+    let url =
+        if argv |> Array.contains "-mondjo"
+        then "https://submarines.mondjo.ru"
+        elif argv |> Array.contains "-docker"
+        then "http://localhost:8081" 
+        else "http://localhost:5000"
+        
     let connection =
         (HubConnectionBuilder())
           .WithAutomaticReconnect()
-          .WithUrl("http://localhost:5000/server")
+          .WithUrl($"{url}/server")
           .Build()
     
     let us = { id = None; hitBox = false }
