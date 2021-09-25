@@ -83,13 +83,6 @@ let ``HitBox move should return proper value`` () =
     Assert.Equal(HitBox((1, 0), (3, 2)), HitBox.move Down (HitBox((1, 1), (3, 3))))
     Assert.Equal(HitBox((0, 1), (2, 3)), HitBox.move Left (HitBox((1, 1), (3, 3))))
     Assert.Equal(HitBox((2, 1), (4, 3)), HitBox.move Right (HitBox((1, 1), (3, 3))))
-    
-[<Fact>]
-let ``HitBox outBounds should return proper value`` () =
-    Assert.True(HitBox.outBounds (10, 10) (HitBox((-1, -1), (0, 0))))
-    Assert.True(HitBox.outBounds (10, 10) (HitBox((0, 0), (11, 11))))
-    Assert.True(HitBox.outBounds (10, 10) (HitBox((1, 1), (09, 11))))
-    Assert.True(HitBox.outBounds (10, 10) (HitBox((1, 1), (11, 09))))
        
 [<Fact>]
 let ``HitBox join should join two hitBoxes`` () =
@@ -138,7 +131,3 @@ let ``Projection applyAll should affect all segments`` () =
             (Reflection.createWith b9 [(0, 0); (0, 1)])
             (damage 1))
     
-[<Fact>]
-let ``Projection applyAll should affect all segments1`` () =
-    Assert.Equal((1, 1), AI.shrink (1, 1))
-    Assert.Equal((1, 1), AI.shrink (2, 2))

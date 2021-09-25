@@ -4,7 +4,7 @@ open System
 
 type BotState =
     | SearchCrate
-    | MoveTo of Position
+    | MoveTo of Position * Position * uint
     | Idle of Time
 
 module AI =
@@ -19,18 +19,17 @@ module AI =
         | Projection sl ->
             sl |> List.map Reflection.getPos |> List.contains pos
         
-    let shrink (w, h) =
-        (w - 1, h - 1)
-        
     let searchCrate rnd game id =
         let me = findById id game
-        let crate = me.hitBox
-                    |> HitBox.expand 10
-                    |> HitBox.crop game.size
-                    |> findClosestCrate game.crates
-        match crate with
-        | Some c -> MoveTo(HitBox.topLeft c.hitBox), []
-        | None -> MoveTo(Position.getRandom rnd game.size), [] 
+        let cr = me.hitBox
+                 |> HitBox.expand 10
+                 |> HitBox.crop game.size
+                 |> findClosestCrate game.crates
+        let pos =
+            match cr with
+            | Some c -> HitBox.topLeft c.hitBox
+            | None -> Position.getRandom rnd game.size
+        MoveTo(pos, HitBox.topLeft me.hitBox, 0u), []
         
     let move game id pos =
         let me = findById id game
@@ -41,18 +40,16 @@ module AI =
             let tl = Projection.topLeft pr
             let lx = (fst tl) - (fst pos)
             let ly = (snd tl) - (snd pos)
-            if abs lx > abs ly then
-                let dir =
+            let dx =
+                if abs lx > abs ly then
                     if lx > 0
                     then Left
                     else Right
-                (MoveTo pos), [AreaCommand(Move(me.id, dir))]
-            else
-                let dir =
+                else
                     if ly < 0
                     then Up
                     else Down
-                (MoveTo pos), [AreaCommand(Move(me.id, dir))]
+            (MoveTo (pos, HitBox.topLeft me.hitBox, 0u)), [AreaCommand(Move(me.id, dx))]
         
     let idle game till =
         if game.time = till

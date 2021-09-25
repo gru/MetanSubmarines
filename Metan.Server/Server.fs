@@ -92,7 +92,7 @@ module Actors =
             printfn $"%A{state}"
             match state with
             | SearchCrate -> become (searching id) 
-            | MoveTo pos -> become (moving id pos)
+            | MoveTo (pos, _, _) -> become (moving id pos)
             | Idle till -> become (idle id till)
         connecting()
     

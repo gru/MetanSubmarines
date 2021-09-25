@@ -96,6 +96,13 @@ module List =
     let any f vs =
         vs |> List.tryFind f |> Option.isSome
 
+module Direction =
+    let reverse = function
+        | Up -> Down
+        | Down -> Up
+        | Left -> Right
+        | Right -> Left
+
 module Position =
     let add (x1, y1) (x2, y2) =
         (x1 + x2, y1 + y2)
@@ -178,8 +185,11 @@ module HitBox =
         | Left -> HitBox ((l - 1, t), (r - 1, b))
         | Right -> HitBox ((l + 1, t), (r + 1, b))
         
-    let outBounds (w, h) (HitBox((l, t), (r, b))) =
+    let private outBounds (w, h) (HitBox((l, t), (r, b))) =
         t < 0 || b > h || l < 0 || r > w
+        
+    let tryMove size dir hb =
+        not (hb |> move dir |> outBounds size)
         
     let join hb1 hb2 =
         let tl1, tl2 = topLeft hb1, topLeft hb2
@@ -265,7 +275,7 @@ module Crate =
             bonus = bonus
         }
     
-    let rec apply (rnd:Random) (dir:Direction) (c:Crate) (v:Vehicle) =
+    let rec apply (rnd:Random) (s:Size) (dir:Direction) (c:Crate) (v:Vehicle) =
         match c.bonus with
         | HealthBonus health ->
             let vrx = Projection.project c.hitBox c.shape
@@ -278,18 +288,27 @@ module Crate =
                       |> Reflection.applyMatched (damage dmg) v.shape 
             Some { v with shape = vrx }
         | ShapeBonus ->
-            let rr = Projection.project
+            let rr =
+                if HitBox.tryMove s dir c.hitBox
+                then
+                    Projection.project
                          (HitBox.move dir c.hitBox)
                          (Reflection.singleWith (Body 9) (0, 0))
-                     |> Projection.join
-                     <| Projection.project v.hitBox v.shape
+                    |> Projection.join
+                    <| Projection.project v.hitBox v.shape
+                else
+                    Projection.project
+                         c.hitBox
+                         (Reflection.singleWith (Body 9) (0, 0))
+                    |> Projection.join
+                    <| Projection.project (HitBox.move (Direction.reverse dir) v.hitBox) v.shape
             let hb = Projection.toHitBox rr
             let sp = Projection.reflect hb rr
             Some { v with hitBox = hb; shape = sp }
         | RandomBonus ->
             if rnd.NextDouble() > 0.5
-            then apply rnd dir { c with bonus = DamageBonus (rnd.Next(1, 5)) } v
-            else apply rnd dir { c with bonus = HealthBonus (rnd.Next(1, 5)) } v
+            then apply rnd s dir { c with bonus = DamageBonus (rnd.Next(1, 5)) } v
+            else apply rnd s dir { c with bonus = HealthBonus (rnd.Next(1, 5)) } v
           
     let disappearOverVehicles (vs:Vehicle list) (c:Crate) =
         match vs |> List.tryFind (fun v -> HitBox.intersect v.hitBox c.hitBox) with
@@ -330,10 +349,9 @@ module Bullet =
         Some { b with hitBox = HitBox.move b.dir b.hitBox }
 
     let stopOverBoundaries (s:Size) (b:Bullet) =
-        let hb = HitBox.move b.dir b.hitBox
-        if HitBox.outBounds s hb
-        then None
-        else Some b
+        if HitBox.tryMove s b.dir b.hitBox
+        then Some b
+        else None
 
     let rec stopOverVehicles (vs: Vehicle list) (b:Bullet) =
         match vs |> List.tryFind (fun v -> HitBox.intersect v.hitBox b.hitBox) with
@@ -362,9 +380,9 @@ module Vehicle =
         Movable { m with hitBox = HitBox.move dir m.hitBox }
 
     let stopOverBoundaries size dir (m:Vehicle) =
-        if HitBox.outBounds size (HitBox.move dir m.hitBox)
-        then Blocked m
-        else Movable m
+        if HitBox.tryMove size dir m.hitBox
+        then Movable m
+        else Blocked m
     
     let stopOverVehicles (vs:Vehicle list) dir (m:Vehicle) =
         let hb = HitBox.move dir m.hitBox
@@ -392,8 +410,7 @@ module Vehicle =
         else None
 
     let fireOverBoundaries size dir (m:Vehicle) =
-        let hb = HitBox.move dir m.hitBox
-        if HitBox.outBounds size hb
+        if HitBox.tryMove size dir m.hitBox
         then None
         else Some m 
 
@@ -406,13 +423,13 @@ module Vehicle =
             Some { m with shape = vrx }
         | None -> Some m
         
-    let takeCrate (rnd:Random) (dir:Direction) (cs:Crate list) (m:Vehicle) =
+    let takeCrate (rnd:Random) (s:Size) (dir:Direction) (cs:Crate list) (m:Vehicle) =
         match cs |> List.tryFind (fun c -> HitBox.intersect c.hitBox m.hitBox) with
         | Some c ->
             if Projection.project m.hitBox m.shape
                |> Projection.contains
                <| Projection.project c.hitBox c.shape
-            then Crate.apply rnd dir c m
+            then Crate.apply rnd s dir c m
             else Some m
         | None -> Some m
         
@@ -446,7 +463,7 @@ module Game =
                      |> List.map Movable.unwind
             let hitPipe =
                 Option.ret
-                >> Option.bind (Vehicle.takeCrate rnd dir game.crates)
+                >> Option.bind (Vehicle.takeCrate rnd game.size dir game.crates)
             let vs = vs
                      |> List.map hitPipe
                      |> List.choose id
