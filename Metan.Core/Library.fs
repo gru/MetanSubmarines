@@ -27,6 +27,7 @@ module Core =
             shape: Reflection
             dir:Direction
             dmg:Damage
+            spd:int
         }
     type VehicleId = int
     type Vehicle =
@@ -351,6 +352,7 @@ module Bullet =
           shape = Reflection.singleOfNothing (0, 0)
           dmg = dmg
           dir = dir
+          spd = 2
         }
         
     let moveBullet (b:Bullet) =
@@ -472,51 +474,66 @@ module Game =
                 >> Movable.bind (Vehicle.stopOverBoundaries game.size dir)
                 >> Movable.bind (Vehicle.stopOverVehicles game.vehicles dir)
                 >> Movable.bind (Vehicle.moveVehicle dir)
-            let vs = game.vehicles
-                     |> List.map movePipe
-                     |> List.map Movable.unwind
+            let moved =
+                game.vehicles
+                |> List.map movePipe
+                |> List.map Movable.unwind
             let hitPipe =
                 Option.ret
                 >> Option.bind (Vehicle.takeCrate rnd game.size dir game.crates)
-            let vs = vs
-                     |> List.map hitPipe
-                     |> List.choose id
-            tick rnd { game with vehicles = vs } rest
+            let survived =
+                moved
+                |> List.map hitPipe
+                |> List.choose id
+            tick rnd { game with vehicles = survived } rest
         | Fire(vid, dir)::rest ->
             let firePipe =
                 Vehicle.fireById vid
                 >> Option.bind (Vehicle.fireOverBoundaries game.size dir)
                 >> Option.bind (Vehicle.fire dir)
-            let bs = game.vehicles
-                     |> List.map firePipe
-                     |> List.choose id
-                     |> List.concat
-            tick rnd { game with bullets = game.bullets @ bs } rest
+            let fired =
+                game.vehicles
+                |> List.map firePipe
+                |> List.choose id
+                |> List.concat
+            tick rnd { game with bullets = game.bullets @ fired } rest
         | Tick::rest ->
-            let movePipe =
-                Option.ret
-                >> Option.bind (Bullet.stopOverBoundaries game.size)
-                >> Option.bind (Bullet.stopOverVehicles game.vehicles)
-                >> Option.bind (Bullet.moveBullet)
-            let bs = game.bullets
-                     |> List.map movePipe
-                     |> List.choose id
+            let rec subTick subGame subEpoch =
+                let epochBullets =
+                    subGame.bullets
+                    |> List.filter (fun b -> b.spd >= subEpoch)
+                if epochBullets |> List.isEmpty
+                then
+                    { subGame with time = subGame.time + 1u }
+                else
+                    let movePipe =
+                        Option.ret
+                        >> Option.bind (Bullet.stopOverBoundaries game.size)
+                        >> Option.bind (Bullet.stopOverVehicles game.vehicles)
+                        >> Option.bind (Bullet.moveBullet)
+                    let moved =
+                        epochBullets
+                        |> List.map movePipe
+                        |> List.choose id
+                    let hitPipe =
+                        Option.ret
+                        >> Option.bind (Vehicle.hitByBullet moved)
+                        >> Option.bind (Vehicle.filterDead)
+                    let survived =
+                        subGame.vehicles
+                        |> List.map hitPipe
+                        |> List.choose id
+                    subTick { subGame with bullets = moved; vehicles = survived; time = subGame.time + 1u } (subEpoch + 1)
             let cratePipe =
                 Option.ret
                 >> Option.bind (Crate.disappearOverVehicles game.vehicles)
-            let cx = Crate.spawn rnd game.size game.crates
-            let cs = game.crates
-                     |> List.map cratePipe
-                     |> List.append [cx]
-                     |> List.choose id
-            let hitPipe =
-                Option.ret
-                >> Option.bind (Vehicle.hitByBullet bs)
-                >> Option.bind (Vehicle.filterDead)
-            let vs = game.vehicles
-                     |> List.map hitPipe
-                     |> List.choose id
-            tick rnd { game with bullets = bs; vehicles = vs; crates = cs; time = game.time + 1u } rest
+            let spawned = Crate.spawn rnd game.size game.crates
+            let crates =
+                game.crates
+                |> List.map cratePipe
+                |> List.append [spawned]
+                |> List.choose id
+            tick rnd (subTick { game with crates = crates } 1) rest
         | [] -> game
         
     let addVehicle rnd id game =

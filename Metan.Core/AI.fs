@@ -56,7 +56,7 @@ module AI =
         
     let idle game = function
         | Idle till ->
-            if game.time = till
+            if game.time >= till
             then SearchCrate, []
             else Idle till, []
         | _ -> raise InvalidState
