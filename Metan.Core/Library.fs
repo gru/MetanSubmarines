@@ -277,6 +277,41 @@ module SegmentKind =
         | Body current -> current > 0
         | _ -> false
     
+module Shape =
+    exception InvalidShape;
+    
+    let grow ref =
+        let body pos =
+            { pos = pos; kind = Body 1 }
+        let push dir s =
+            { s with Segment.pos = Position.move dir s.pos; }
+        match ref with
+        | Reflection [ ]  -> 
+            raise InvalidShape 
+        | Reflection [ s ] -> 
+            Reflection.create [ s; body (1, 0) ] 
+        | Reflection [ l; r ] -> 
+            Reflection.create [ l; r; body (2, 0) ]
+        | Reflection [ l; c; r ] -> 
+            Reflection.create [ push Up l; push Up c; push Up r; body (1, 0) ]
+        | Reflection [ l; t; c; r ] ->
+            Reflection.create [ l; t; c; r; body (3, 1) ]
+        | r -> r
+    
+    let shrink ref =
+        let set s pos =
+            { s with pos = pos; }
+        match ref with
+        | Reflection [ s ]  ->  
+            Reflection.create [ set s (0, 0) ]
+        | Reflection [ l; r ] ->
+            Reflection.create [ set l (0, 0); set r (1, 0) ]
+        | Reflection [ l; c; r ] ->
+            Reflection.create [ set l (0, 0); set c (1, 0); set r (2, 0) ]
+        | Reflection [ l; t; c; r ] ->
+            Reflection.create [ set l (0, 1); set t (1, 0); set c (1, 1); set r (2, 1) ]
+        | r -> r 
+    
 module Crate =
     open SegmentKind
     
@@ -286,14 +321,7 @@ module Crate =
             shape = Reflection.singleOfNothing (0, 0)
             bonus = bonus
         }
-    
-    let getShape = function
-        | 0 -> Reflection.singleWith (Body 9) (0, 0)
-        | 1 -> Reflection.createWith (Body 9) [(0, 0); (1, 0)] 
-        | 2 -> Reflection.createWith (Body 9) [(0, 0); (1, 0); (2, 0)]
-        | 3 -> Reflection.createWith (Body 9) [(0, 1); (1, 1); (2, 1); (1, 0)]
-        | _ -> Reflection.createWith (Body 9) [(0, 1); (1, 1); (2, 1); (3, 1); (2, 0)]
-    
+        
     let rec apply (rnd:Random) (s:Size) (dir:Direction) (c:Crate) (v:Vehicle) =
         match c.bonus with
         | HealthBonus health ->
@@ -304,10 +332,12 @@ module Crate =
         | DamageBonus dmg ->
             let vrx = Projection.project c.hitBox c.shape
                       |> Projection.reflect v.hitBox
-                      |> Reflection.applyMatched (damage dmg) v.shape 
+                      |> Reflection.applyMatched (damage dmg) v.shape
+                      |> Reflection.filterAll dead
+                      |> Shape.shrink
             Some { v with shape = vrx }
         | ShapeBonus ->
-            let sp = getShape (Reflection.len v.shape)
+            let sp = Shape.grow v.shape
             let pr = Projection.project v.hitBox sp
             let hb = Projection.toHitBox pr
             Some { v with hitBox = hb; shape = sp }
@@ -428,6 +458,7 @@ module Vehicle =
                       |> Projection.reflect m.hitBox
                       |> Reflection.applyMatched (damage b.dmg) m.shape
                       |> Reflection.filterAll dead
+                      |> Shape.shrink
             Some { m with shape = vrx } 
         | None -> Some m
         
