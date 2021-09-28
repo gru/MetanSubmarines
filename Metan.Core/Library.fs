@@ -152,6 +152,9 @@ module Reflection =
         { Segment.pos = p; kind = Nothing }
         |> single
 
+    let len = function
+        | Reflection sl -> sl |> List.length
+    
     let isEmpty = function
         | Reflection [] -> true
         | _ -> false
@@ -284,6 +287,13 @@ module Crate =
             bonus = bonus
         }
     
+    let getShape = function
+        | 0 -> Reflection.singleWith (Body 9) (0, 0)
+        | 1 -> Reflection.createWith (Body 9) [(0, 0); (1, 0)] 
+        | 2 -> Reflection.createWith (Body 9) [(0, 0); (1, 0); (2, 0)]
+        | 3 -> Reflection.createWith (Body 9) [(0, 1); (1, 1); (2, 1); (1, 0)]
+        | _ -> Reflection.createWith (Body 9) [(0, 1); (1, 1); (2, 1); (3, 1); (2, 0)]
+    
     let rec apply (rnd:Random) (s:Size) (dir:Direction) (c:Crate) (v:Vehicle) =
         match c.bonus with
         | HealthBonus health ->
@@ -297,22 +307,9 @@ module Crate =
                       |> Reflection.applyMatched (damage dmg) v.shape 
             Some { v with shape = vrx }
         | ShapeBonus ->
-            let rr =
-                if HitBox.tryMove s dir c.hitBox
-                then
-                    Projection.project
-                         (HitBox.move dir c.hitBox)
-                         (Reflection.singleWith (Body 9) (0, 0))
-                    |> Projection.join
-                    <| Projection.project v.hitBox v.shape
-                else
-                    Projection.project
-                         c.hitBox
-                         (Reflection.singleWith (Body 9) (0, 0))
-                    |> Projection.join
-                    <| Projection.project (HitBox.move (Direction.reverse dir) v.hitBox) v.shape
-            let hb = Projection.toHitBox rr
-            let sp = Projection.reflect hb rr
+            let sp = getShape (Reflection.len v.shape)
+            let pr = Projection.project v.hitBox sp
+            let hb = Projection.toHitBox pr
             Some { v with hitBox = hb; shape = sp }
         | RandomBonus ->
             if rnd.NextDouble() > 0.5
