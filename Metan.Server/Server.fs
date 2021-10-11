@@ -151,7 +151,7 @@ module Actors =
             let! command = me.Receive ()
             match command with
             | AreaCommand Tick ->
-                let gx = Game.tick rnd game (Tick :: area.commands)
+                let gx = Game.tick rnd (Tick :: area.commands) game
                 let ref = select me "client_*"
                 ref <! State (game, gx)
                 return! loop({ area with commands = [] }) gx

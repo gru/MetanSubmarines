@@ -152,6 +152,9 @@ module Reflection =
         { Segment.pos = p; kind = Nothing }
         |> single
 
+    let head = function
+        | Reflection sl -> sl |> List.head
+    
     let len = function
         | Reflection sl -> sl |> List.length
     
@@ -493,7 +496,7 @@ module Movable =
         | Blocked v -> v
         
 module Game =
-    let rec tick (rnd:Random) (game:Game) (cs:GameCommand list) =
+    let rec tick (rnd:Random) (cs:GameCommand list) (game:Game)  =
         match cs with
         | Move(vid, dir)::rest ->
             let movePipe =
@@ -509,11 +512,12 @@ module Game =
             let hitPipe =
                 Option.ret
                 >> Option.bind (Vehicle.takeCrate rnd game.size dir game.crates)
+                >> Option.bind (Vehicle.filterDead)
             let survived =
                 moved
                 |> List.map hitPipe
                 |> List.choose id
-            tick rnd { game with vehicles = survived } rest
+            tick rnd rest { game with vehicles = survived } 
         | Fire(vid, dir)::rest ->
             let firePipe =
                 Vehicle.fireById vid
@@ -524,7 +528,7 @@ module Game =
                 |> List.map firePipe
                 |> List.choose id
                 |> List.concat
-            tick rnd { game with bullets = game.bullets @ fired } rest
+            tick rnd rest { game with bullets = game.bullets @ fired } 
         | Tick::rest ->
             let rec subTick subGame subEpoch =
                 let epochBullets =
@@ -561,7 +565,7 @@ module Game =
                 |> List.map cratePipe
                 |> List.append [spawned]
                 |> List.choose id
-            tick rnd (subTick { game with crates = crates } 1) rest
+            tick rnd rest (subTick { game with crates = crates } 1) 
         | [] -> game
         
     let addVehicle rnd id game =

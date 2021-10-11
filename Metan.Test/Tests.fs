@@ -1,133 +1,244 @@
 module Tests
 
 open System
-open Xunit
 open Metan.Core
+open Xunit
 
-let b9 = Body 9
-let damage dmg b =
-    match b with
-    | Body h -> Body (h - dmg)
-    | _ -> b
+exception UnexpectedBulletCount
+exception UnexpectedSegmentKind
 
-module Projection =
-    let createWith kind ps =
-        ps |> List.map (fun p -> { Segment.pos = p; kind = kind })
-        |> Projection
-
-[<Fact>]
-let ``Position add should return proper value`` () =
-    Assert.Equal((0, 0), Position.add (0, 0) (0, 0))
-    Assert.Equal((1, 0), Position.add (0, 0) (1, 0))
-    Assert.Equal((0, 1), Position.add (0, 0) (0, 1))
-    Assert.Equal((1, 1), Position.add (0, 0) (1, 1))
-    Assert.Equal((-1, -1), Position.add (0, 0) (-1, -1))
-    
-[<Fact>]
-let ``Position sub should return proper value`` () =
-    Assert.Equal((0, 0), Position.sub (0, 0) (0, 0))
-    Assert.Equal((-1, 0), Position.sub (0, 0) (1, 0))
-    Assert.Equal((0, -1), Position.sub (0, 0) (0, 1))
-    Assert.Equal((-1, -1), Position.sub (0, 0) (1, 1))
-    Assert.Equal((1, 1), Position.sub (0, 0) (-1, -1))
-    Assert.Equal((-1, -1), Position.sub (-2, -2) (-1, -1))
-    
-[<Fact>]
-let ``Position move should return proper value`` () =
-    Assert.Equal((0, 1), Position.move Up (0, 0))
-    Assert.Equal((0, -1), Position.move Down (0, 0))
-    Assert.Equal((-1, 0), Position.move Left (0, 0))
-    Assert.Equal((1, 0), Position.move Right (0, 0))
+let rnd = new Random()
+let defaultGame = Game.empty (Size(50, 25))
+let applyCommand cmd g =
+    g |> Game.tick rnd [ cmd ]
+let tick commands =
+    Game.tick rnd commands
+let withVehicle id pos health g =
+    let v = {
+        id = id
+        hitBox = HitBox.single pos
+        dmg = 1
+        shape = Reflection.singleWith (Body(health)) (0, 0)
+        color = ConsoleColor.Blue }
+    { g with vehicles = v::g.vehicles }
+let withVehicleAt id pos g =
+    withVehicle id pos 9 g
+let withCrate pos bonus g =
+    let c = {
+        hitBox = HitBox.single pos
+        shape = Reflection.singleOfNothing (0, 0)
+        bonus = bonus }
+    { g with crates = c::g.crates }
 
 [<Fact>]
-let ``Reflection single should create reflection`` () =
-    Assert.Equal(Reflection.createWith b9 [(10, 20)], Reflection.singleWith b9 (10, 20))
+let ``Should move vehicle`` () =
+    let x, y = (10, 10)
+    let vu =
+         defaultGame 
+         |> withVehicleAt 1 (x, y) 
+         |> applyCommand (Move(1, Up))
+         |> fun g -> g.vehicles |> List.head
+    Assert.Equal((x, y + 1), HitBox.topLeft vu.hitBox)
+    let vd =
+         defaultGame 
+         |> withVehicleAt 1 (x, y) 
+         |> applyCommand (Move(1, Down))
+         |> fun g -> g.vehicles |> List.head
+    Assert.Equal((x, y - 1), HitBox.topLeft vd.hitBox)
+    let gl =
+         defaultGame 
+         |> withVehicleAt 1 (x, y) 
+         |> applyCommand (Move(1, Left))
+         |> fun g -> g.vehicles |> List.head
+    Assert.Equal((x - 1, y), HitBox.topLeft gl.hitBox)
+    let gr =
+         defaultGame 
+         |> withVehicleAt 1 (x, y) 
+         |> applyCommand (Move(1, Right))
+         |> fun g -> g.vehicles |> List.head
+    Assert.Equal((x + 1, y), HitBox.topLeft gr.hitBox)
+    let gn =
+         defaultGame 
+         |> withVehicleAt 1 (x, y) 
+         |> applyCommand (Move(2, Right))
+         |> fun g -> g.vehicles |> List.head
+    Assert.Equal((x, y), HitBox.topLeft gn.hitBox)
 
 [<Fact>]
-let ``Reflection create should create reflection and sort positions`` () =
-    Assert.Equal(Reflection.createWith b9 [(0, 0); (1, 1); (2, 2)], Reflection.createWith b9 [(1, 1); (0, 0); (2, 2)])
-    Assert.Equal(Reflection.createWith b9 [(1, 3); (2, 2); (3, 1)], Reflection.createWith b9 [(1, 3); (2, 2); (3, 1)])
-      
-[<Fact>]
-let ``HitBox single should return one point hitBox`` () =
-    Assert.Equal(HitBox ((2, 1), (2, 1)), HitBox.single (2, 1))
+let ``Should not move vehicle in corners`` () =
+    let tl = (0, 0)
+    let v1 =
+         defaultGame 
+         |> withVehicleAt 1 tl
+         |> applyCommand (Move(1, Left))
+         |> applyCommand (Move(1, Down))
+         |> fun g -> g.vehicles |> List.head
+    Assert.Equal(tl, HitBox.topLeft v1.hitBox)
+    let br = defaultGame.size
+    let v2 =
+         defaultGame 
+         |> withVehicleAt 1 br
+         |> applyCommand (Move(1, Right))
+         |> applyCommand (Move(1, Up))
+         |> fun g -> g.vehicles |> List.head
+    Assert.Equal(br, HitBox.topLeft v2.hitBox)
     
 [<Fact>]
-let ``HitBox bottomRight should return bottom right position`` () =
-     Assert.Equal((2, 1), HitBox.bottomRight (HitBox((5, 6), (2, 1))))
-  
-[<Fact>]
-let ``HitBox topLeft should return top left position`` () =
-    Assert.Equal((5, 6), HitBox.topLeft (HitBox((5, 6), (2, 1))))
+let ``Should not move vehicle blocked by another vehicle`` () =
+    let p1 = (10, 10)
+    let p2 = (11, 10)
+    let v1 =
+        defaultGame
+        |> withVehicleAt 2 p2
+        |> withVehicleAt 1 p1 
+        |> applyCommand (Move(1, Right))
+        |> fun g -> g.vehicles |> List.head
+    Assert.Equal(p1, HitBox.topLeft v1.hitBox)
     
 [<Fact>]
-let ``HitBox intersect should return proper value`` () =
-    Assert.True(HitBox.intersect (HitBox((0, 0), (0, 0))) (HitBox((0, 0), (0, 0))))
-    Assert.True(HitBox.intersect (HitBox((0, 0), (1, 1))) (HitBox((0, 0), (0, 0))))
-    Assert.True(HitBox.intersect (HitBox((0, 0), (1, 1))) (HitBox((1, 1), (1, 1))))
-    Assert.True(HitBox.intersect (HitBox((0, 0), (2, 2))) (HitBox((1, 0), (3, 2))))
-    Assert.True(HitBox.intersect (HitBox((1, 0), (3, 2))) (HitBox((0, 0), (2, 2))))
-    Assert.True(HitBox.intersect (HitBox((1, 1), (2, 2))) (HitBox((0, 0), (2, 1))))
-    
-    Assert.False(HitBox.intersect (HitBox((0, 0), (0, 0))) (HitBox((1, 1), (1, 1))))
-    Assert.False(HitBox.intersect (HitBox((0, 0), (0, 2))) (HitBox((2, 0), (2, 2))))
+let ``Should fire bullet`` () =
+     let x, y = (10, 10)
+     let g =
+         defaultGame 
+         |> withVehicleAt 1 (x, y)
+         |> applyCommand (Fire(1, Up))
+         |> applyCommand (Fire(1, Down))
+         |> applyCommand (Fire(1, Left))
+         |> applyCommand (Fire(1, Right))
+     match g.bullets with
+     | [ u; d; l; r ] ->
+         Assert.Equal((x, y + 1), HitBox.topLeft u.hitBox)
+         Assert.Equal((x, y - 1), HitBox.topLeft d.hitBox)
+         Assert.Equal((x - 1, y), HitBox.topLeft l.hitBox)
+         Assert.Equal((x + 1, y), HitBox.topLeft r.hitBox)
+     | _ -> raise UnexpectedBulletCount
+     
+[<Fact>]
+let ``Should not fire out bounds`` () =
+    let tl = (0, 0)
+    let bs1 =
+         defaultGame 
+         |> withVehicleAt 1 tl
+         |> applyCommand (Fire(1, Left))
+         |> applyCommand (Fire(1, Down))
+         |> fun g -> g.bullets
+    Assert.Empty(bs1)
+    let bs2 =
+         defaultGame 
+         |> withVehicleAt 1 tl
+         |> applyCommand (Fire(1, Right))
+         |> applyCommand (Fire(1, Up))
+         |> fun g -> g.bullets
+    Assert.Equal(2, bs2 |> List.length)
+    let br = defaultGame.size
+    let bs3 =
+         defaultGame 
+         |> withVehicleAt 1 br
+         |> applyCommand (Fire(1, Right))
+         |> applyCommand (Fire(1, Up))
+         |> fun g -> g.bullets
+    Assert.Empty(bs3)
+    let bs4 =
+         defaultGame 
+         |> withVehicleAt 1 br
+         |> applyCommand (Fire(1, Left))
+         |> applyCommand (Fire(1, Down))
+         |> fun g -> g.bullets
+    Assert.Equal(2, bs4 |> List.length)
     
 [<Fact>]
-let ``HitBox move should return proper value`` () =
-    Assert.Equal(HitBox((0, 1), (0, 1)), HitBox.move Up (HitBox((0, 0), (0, 0))))
-    Assert.Equal(HitBox((0, -1), (0, -1)), HitBox.move Down (HitBox((0, 0), (0, 0))))
-    Assert.Equal(HitBox((-1, 0), (-1, 0)), HitBox.move Left (HitBox((0, 0), (0, 0))))
-    Assert.Equal(HitBox((1, 0), (1, 0)), HitBox.move Right (HitBox((0, 0), (0, 0))))
-    
-    Assert.Equal(HitBox((1, 2), (3, 4)), HitBox.move Up (HitBox((1, 1), (3, 3))))
-    Assert.Equal(HitBox((1, 0), (3, 2)), HitBox.move Down (HitBox((1, 1), (3, 3))))
-    Assert.Equal(HitBox((0, 1), (2, 3)), HitBox.move Left (HitBox((1, 1), (3, 3))))
-    Assert.Equal(HitBox((2, 1), (4, 3)), HitBox.move Right (HitBox((1, 1), (3, 3))))
-       
-[<Fact>]
-let ``HitBox join should join two hitBoxes`` () =
-    Assert.Equal(HitBox((0, 0), (0, 0)), HitBox.join (HitBox((0, 0), (0, 0))) (HitBox((0, 0), (0, 0))))
-    Assert.Equal(HitBox((0, 0), (2, 2)), HitBox.join (HitBox((0, 0), (0, 0))) (HitBox((2, 2), (2, 2))))
-    
-[<Fact>]
-let ``HitBox expand should return correct value`` () =
-    Assert.Equal(HitBox((1, 1), (3, 3)), HitBox.expand 1 (HitBox((2, 2), (2, 2))))
-    
-[<Fact>]
-let ``Projection project should project reflection`` () =
-    Assert.Equal(
-        Projection.createWith b9 [(10, 20); (10, 21); (11, 20)],
-        Projection.project (HitBox.single (10, 20)) (Reflection.createWith b9 [(0, 0); (0, 1); (1, 0)]))
-    Assert.Equal(
-        Projection.createWith b9 [(10, 20); (10, 21); (11, 20)],
-        Projection.project (HitBox ((10, 20), (30, 40))) (Reflection.createWith b9 [(0, 0); (0, 1); (1, 0)]))
-    
-[<Fact>]
-let ``Projection reflect should reflect reflection`` () =
-    Assert.Equal(
-        Reflection.createWith b9 [(0, 0); (0, 1); (1, 0)],
-        Projection.reflect (HitBox.single (10, 20)) (Projection.createWith b9 [(10, 20); (10, 21); (11, 20)]))
-    
-[<Fact>]
-let ``Projection apply matched should affect matched segments`` () =
-    Assert.Equal(
-        Reflection.create [
-            { pos = (0, 0); kind = Body 8 }
-            { pos = (0, 1); kind = Body 9 }
-        ],
-        Reflection.applyMatched
-            (damage 1)
-            (Reflection.createWith b9 [(0, 0); (0, 1)])
-            (Reflection.createWith b9 [(0, 0); (0, 2)]))
+let ``Should move bullets`` () =
+    let x, y = (10, 10)
+    let b =
+        defaultGame 
+        |> withVehicleAt 1 (x, y)
+        |> applyCommand (Fire(1, Right))
+        |> tick [ Tick; ]
+        |> tick [ Tick; ]
+        |> fun g -> g.bullets |> List.head
+    Assert.Equal((x + 5, y), HitBox.topLeft b.hitBox)
 
 [<Fact>]
-let ``Projection applyAll should affect all segments`` () =
-    Assert.Equal(
-        Reflection.create [
-            { pos = (0, 0); kind = Body 8 }
-            { pos = (0, 1); kind = Body 8 }
-        ],
-        Reflection.applyAll 
-            (Reflection.createWith b9 [(0, 0); (0, 1)])
-            (damage 1))
+let ``Should stop bullets out bounds`` () =
+    let g1 =
+        Game.empty (Size(3, 3))
+        |> withVehicleAt 1 (1, 1)
+        |> applyCommand (Fire(1, Up))
+        |> applyCommand (Fire(1, Down))
+        |> applyCommand (Fire(1, Left))
+        |> applyCommand (Fire(1, Right))
+    let g2 =
+        g1 |> tick [ Tick; ]
+    Assert.Equal(4, g1 |> fun g -> g.bullets |> List.length)
+    Assert.Empty(g2.bullets)
     
+[<Fact>]
+let ``Should hit vehicle`` () =
+    let s1 =
+        defaultGame
+        |> withVehicleAt 2 (10, 10)
+        |> withVehicle 1 (12, 10) 2
+        |> applyCommand (Fire(2, Right))
+        |> tick [ Tick ]
+        |> fun g -> g.vehicles |> List.head
+        |> fun v -> v.shape |> Reflection.head
+    match s1.kind with
+    | Body health -> Assert.Equal(1, health)
+    | _ -> raise UnexpectedSegmentKind
+        
+[<Fact>]
+let ``Should apply health bonus when vehicle took crate`` () =
+    let vp = (10, 10)
+    let cp = (11, 10)
+    let s1 =
+        defaultGame
+        |> withCrate cp (HealthBonus(1))
+        |> withVehicle 1 vp 1
+        |> applyCommand (Move(1, Right))
+        |> fun g -> g.vehicles |> List.head
+        |> fun v -> v.shape |> Reflection.head
+    match s1.kind with
+    | Body health -> Assert.Equal(2, health)
+    | _ -> raise UnexpectedSegmentKind
+    
+[<Fact>]
+let ``Should limit health bonus when vehicle took crate`` () =
+    let vp = (10, 10)
+    let cp = (11, 10)
+    let s1 =
+        defaultGame
+        |> withCrate cp (HealthBonus(2))
+        |> withVehicle 1 vp 9
+        |> applyCommand (Move(1, Right))
+        |> fun g -> g.vehicles |> List.head
+        |> fun v -> v.shape |> Reflection.head
+    match s1.kind with
+    | Body health -> Assert.Equal(9, health)
+    | _ -> raise UnexpectedSegmentKind
+    
+[<Fact>]
+let ``Should damage vehicle when damage bonus have been taken`` () =
+    let vp = (10, 10)
+    let cp = (11, 10)
+    let s1 =
+        defaultGame
+        |> withCrate cp (DamageBonus(1))
+        |> withVehicle 1 vp 2
+        |> applyCommand (Move(1, Right))
+        |> fun g -> g.vehicles |> List.head
+        |> fun v -> v.shape |> Reflection.head
+    match s1.kind with
+    | Body health -> Assert.Equal(1, health)
+    | _ -> raise UnexpectedSegmentKind
+    
+[<Fact>]
+let ``Should kill vehicle when damage bonus greater than health`` () =
+    let vp = (10, 10)
+    let cp = (11, 10)
+    let vs =
+        defaultGame
+        |> withCrate cp (DamageBonus(1))
+        |> withVehicle 1 vp 1
+        |> applyCommand (Move(1, Right))
+        |> fun g -> g.vehicles
+    Assert.Empty(vs)
