@@ -8,6 +8,8 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Metan.Client", "Metan.Clien
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Metan.Test", "Metan.Test\Metan.Test.fsproj", "{01D027EA-43E9-40CF-9402-CE6A1BD499A9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Metan.Game", "Metan.Game\Metan.Game.csproj", "{6093BF17-E412-432E-954E-2266F6ACF337}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -30,5 +32,9 @@ Global
 		{01D027EA-43E9-40CF-9402-CE6A1BD499A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{01D027EA-43E9-40CF-9402-CE6A1BD499A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{01D027EA-43E9-40CF-9402-CE6A1BD499A9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6093BF17-E412-432E-954E-2266F6ACF337}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6093BF17-E412-432E-954E-2266F6ACF337}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6093BF17-E412-432E-954E-2266F6ACF337}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6093BF17-E412-432E-954E-2266F6ACF337}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

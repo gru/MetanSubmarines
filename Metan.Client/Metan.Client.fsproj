@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <OutputType>Exe</OutputType>
+        <OutputType>WinExe</OutputType>
         <TargetFramework>net5.0</TargetFramework>
     </PropertyGroup>
 
@@ -11,6 +11,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Metan.Core\Metan.Core.fsproj" />
+      <ProjectReference Include="..\Metan.Game\Metan.Game.csproj" />
     </ItemGroup>
 
     <ItemGroup>
