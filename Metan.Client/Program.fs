@@ -3,73 +3,50 @@ open MBrace.FsPickler
 open Metan
 open Metan.Core
 open Microsoft.AspNetCore.SignalR.Client
-  
+open Metan.Core.ChangeDetection
+
 let decode<'T> (bs:BinarySerializer) =
     bs.UnPickle<'T>
   
 let encode (bs:BinarySerializer) =
     bs.Pickle
 
-let print (prev: Game) (game:Game) =
-    for v in prev.vehicles do
-        match Projection.project v.hitBox v.shape with
-        | Projection ps ->
-            for p in ps do
-                Console.SetCursorPosition p.pos
-                Console.Write ' '
-    for b in prev.bullets do
-        let tl = HitBox.topLeft b.hitBox
-        Console.SetCursorPosition tl
-        Console.Write ' '
-    for c in prev.crates do
-        let tl = HitBox.topLeft c.hitBox
-        Console.SetCursorPosition tl
-        Console.Write ' '
-    let color = Console.ForegroundColor     
-    for v in game.vehicles do
-        Console.ForegroundColor <- v.color
-        match Projection.project v.hitBox v.shape with
-        | Projection sl ->
-            for s in sl do
-                Console.SetCursorPosition s.pos
-                match s.kind with
-                | Body health ->
-                    Console.Write health
-                | Nothing -> ()
-    Console.ForegroundColor <- ConsoleColor.Yellow
-    for b in game.bullets do
-        let tl = HitBox.topLeft b.hitBox
-        Console.SetCursorPosition tl
-        Console.Write '.'
-    for c in game.crates do
-        let tl = HitBox.topLeft c.hitBox
-        Console.SetCursorPosition tl
-        match c.bonus with
-        | HealthBonus _ ->
-            Console.ForegroundColor <- ConsoleColor.Red
-            Console.Write 'H'
-        | DamageBonus _ ->
-            Console.ForegroundColor <- ConsoleColor.Yellow
-            Console.Write 'D'
-        | ShapeBonus ->
-            Console.ForegroundColor <- ConsoleColor.Yellow
-            Console.Write 'S'
-        | RandomBonus _ ->
-            Console.ForegroundColor <- ConsoleColor.Gray
-            Console.Write '?'
-    Console.ForegroundColor <- color
-
 let onAreaEvent (client:Submarines) (decode:byte[] -> AreaEvent) (data:byte[]) =
     let toClientHitBox (HitBox((tlx, tly), (brx, bry))) =
         ClientHitBox(tlx, tly, brx, bry)
+    let apply change =
+        match change with
+        | VehicleAdded({ id = id; hitBox = hitBox; dmg = dmg }) ->
+            client.State.VehicleAdded(id, toClientHitBox hitBox , dmg)
+        | VehicleRemoved(id) ->
+            client.State.VehicleRemoved(id)
+        | VehicleMoved(id, _, hitBox) ->
+            client.State.VehicleMoved(id, toClientHitBox hitBox)
+        | CrateAdded({ id = id; hitBox = hitBox }) ->
+            client.State.CrateAdded(id, toClientHitBox hitBox)
+        | CrateRemoved(id) ->
+            client.State.CrateRemoved(id)
+        | BulletAdded({ id = id; hitBox = hitBox }) ->
+            client.State.BulletAdded(id, toClientHitBox hitBox)
+        | BulletRemoved(id) ->
+            client.State.BulletRemoved(id)
+        | BulletMoved(id, _, hitBox) ->
+            client.State.BulletMoved(id, toClientHitBox hitBox)
+        | _ -> ()
     match decode data with
-    | State (_, game) ->
-        client.Clear()
-        for v in game.vehicles do
-            let hb = toClientHitBox(v.hitBox)
-            if client.ContainsVehicle(v.id)
-            then client.MoveVehicle(v.id, hb)
-            else client.AddVehicle(v.id, hb, v.dmg)
+    | State (previous, current) ->
+        if client.Ready
+        then
+            if client.State.Initialized
+            then
+                for change in delta previous current do
+                    apply change
+            else
+                for change in init current do
+                    apply change
+                    
+                client.State.Initialized <- true
+        else ()
     | UserEvent (_, UserJoined id) ->
         client.Id <- id
     | UserEvent (_, UserLeft) ->
@@ -147,9 +124,9 @@ let main argv =
                 | UserEvent.FireRight ->
                     callGameCommand (Fire (client.Id, Right))
                 | UserEvent.ShowHitBox ->
-                    client.ShowHitBox <- true
+                    client.Options.ShowHitBox <- true
                 | UserEvent.HideHitBox ->
-                    client.ShowHitBox <- false
+                    client.Options.ShowHitBox <- false
                 | UserEvent.Leave ->
                      callUserCommand (Leave client.Id)
                 | _ ->

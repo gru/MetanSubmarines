@@ -180,7 +180,7 @@ module Actors =
                 ref <! UserEvent ("", UserJoined id)
                 return! loop(ax) gx
         }
-        awaiting Area.empty (Game.empty (Size(50, 25)))
+        awaiting Area.empty (Game.empty (Size(79, 47)))
 
 type ActorService (system:ActorSystem, ep:EventPublisher, appLifetime:IHostApplicationLifetime) =
     interface IHostedService with 

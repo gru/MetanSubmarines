@@ -6,6 +6,7 @@
 
     <ItemGroup>
         <Compile Include="Library.fs" />
+        <Compile Include="Delta.fs" />
         <Compile Include="AI.fs" />
     </ItemGroup>
 

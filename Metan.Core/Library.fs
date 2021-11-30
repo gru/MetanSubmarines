@@ -1,6 +1,8 @@
 ﻿namespace Metan.Core
 
 open System
+open System.Collections.Generic
+open System.Threading
 
 [<AutoOpen>]
 module Core =
@@ -21,8 +23,10 @@ module Core =
     type Reflection = Reflection of Segment list
     type Projection = Projection of Segment list
     type HitBox = HitBox of Position * Position
+    type BulletId = int
     type Bullet =
         {
+            id: BulletId
             hitBox:HitBox
             shape: Reflection
             dir:Direction
@@ -46,8 +50,10 @@ module Core =
         | DamageBonus of Damage
         | ShapeBonus
         | RandomBonus
+    type CrateId = int
     type Crate =
         {
+            id: CrateId
             hitBox:HitBox
             shape:Reflection
             bonus:Bonus
@@ -85,6 +91,10 @@ module Core =
             commands: GameCommand list
             connections: Map<ConnectionId, UserId>
         }
+        
+    let nextId =
+        let current = ref 0
+        fun () -> Interlocked.Increment(current)
         
 module Option =
     let ret v = Some v
@@ -320,6 +330,7 @@ module Crate =
     
     let create p bonus =
         {
+            id = nextId ()
             hitBox = HitBox.single p
             shape = Reflection.singleOfNothing (0, 0)
             bonus = bonus
@@ -378,7 +389,8 @@ module Crate =
 module Bullet =
     let create dir pos dmg =
         {
-          Bullet.hitBox = HitBox.single pos
+          Bullet.id = nextId ()
+          hitBox = HitBox.single pos
           shape = Reflection.singleOfNothing (0, 0)
           dmg = dmg
           dir = dir
@@ -479,6 +491,13 @@ module Vehicle =
         if (m.shape |> Reflection.filterAll dead |> Reflection.isEmpty)
         then None
         else Some m
+        
+    let health { Vehicle.shape = Reflection shape } =
+        let getBodyHealth segment =
+            match segment with
+            | { kind = Body value } -> value
+            | _ -> 0
+        shape |> List.map getBodyHealth |> List.sum
         
     let getColor (rnd:Random) =
         let ns = Enum.GetNames(typeof<ConsoleColor>)
@@ -602,3 +621,4 @@ module Area =
         idx,
         { area with users = area.users |> List.filter (fun ux -> not (ux = idx))
                     connections = area.connections |> Map.remove cnn }
+        

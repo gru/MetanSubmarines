@@ -23,8 +23,9 @@ let withVehicle id pos health g =
     { g with vehicles = v::g.vehicles }
 let withVehicleAt id pos g =
     withVehicle id pos 9 g
-let withCrate pos bonus g =
+let withCrate id pos bonus g =
     let c = {
+        id = id
         hitBox = HitBox.single pos
         shape = Reflection.singleOfNothing (0, 0)
         bonus = bonus }
@@ -192,7 +193,7 @@ let ``Should apply health bonus when vehicle took crate`` () =
     let cp = (11, 10)
     let s1 =
         defaultGame
-        |> withCrate cp (HealthBonus(1))
+        |> withCrate 1 cp (HealthBonus(1))
         |> withVehicle 1 vp 1
         |> applyCommand (Move(1, Right))
         |> fun g -> g.vehicles |> List.head
@@ -207,7 +208,7 @@ let ``Should limit health bonus when vehicle took crate`` () =
     let cp = (11, 10)
     let s1 =
         defaultGame
-        |> withCrate cp (HealthBonus(2))
+        |> withCrate 1 cp (HealthBonus(2))
         |> withVehicle 1 vp 9
         |> applyCommand (Move(1, Right))
         |> fun g -> g.vehicles |> List.head
@@ -222,7 +223,7 @@ let ``Should damage vehicle when damage bonus have been taken`` () =
     let cp = (11, 10)
     let s1 =
         defaultGame
-        |> withCrate cp (DamageBonus(1))
+        |> withCrate 1 cp (DamageBonus(1))
         |> withVehicle 1 vp 2
         |> applyCommand (Move(1, Right))
         |> fun g -> g.vehicles |> List.head
@@ -237,8 +238,139 @@ let ``Should kill vehicle when damage bonus greater than health`` () =
     let cp = (11, 10)
     let vs =
         defaultGame
-        |> withCrate cp (DamageBonus(1))
+        |> withCrate 1 cp (DamageBonus(1))
         |> withVehicle 1 vp 1
         |> applyCommand (Move(1, Right))
         |> fun g -> g.vehicles
     Assert.Empty(vs)
+   
+open ChangeDetection
+    
+exception ChangeDetectionFailed
+    
+[<Fact>]
+let ``Should detect vehicle added`` () =
+    let previous = defaultGame
+    let current = previous |> withVehicleAt 1 (10, 10)
+    let changes = delta previous current
+    match changes with
+    | [ VehicleAdded({ Vehicle.id = vid }) ] -> Assert.Equal(1, vid)
+    | _ -> raise ChangeDetectionFailed
+    
+[<Fact>]
+let ``Should detect crate added`` () =
+    let previous =
+        defaultGame
+        |> withCrate 1 (10, 20) (HealthBonus(1))
+    let current =
+        previous
+        |> withCrate 2 (20, 20) (HealthBonus(2))
+    let changes = delta previous current
+    match changes with
+    | [ CrateAdded(c2) ] -> Assert.Equal(2, c2.id)
+    | _ -> raise ChangeDetectionFailed
+    
+[<Fact>]
+let ``Should detect crate removed`` () =
+    let previous =
+        defaultGame
+        |> withCrate 1 (10, 20) (HealthBonus(1))
+    let current = defaultGame
+    let changes = delta previous current
+    match changes with
+    | [ CrateRemoved(id) ] -> Assert.Equal(1, id)
+    | _ -> raise ChangeDetectionFailed
+    
+[<Fact>]
+let ``Should detect crate removed from start`` () =
+    0
+    
+[<Fact>]
+let ``Should detect vehicle removed from end`` () =
+    let previous = defaultGame |> withVehicleAt 1 (10, 10)
+    let current = defaultGame
+    let changes = delta previous current
+    match changes with
+    | [ VehicleRemoved vid ] -> Assert.Equal(1, vid)
+    | _ -> raise ChangeDetectionFailed
+    
+[<Fact>]  
+let ``Should detect vehicle removed`` () =
+    let previous =
+        defaultGame
+        |> withVehicleAt 1 (10, 10)
+        |> withVehicleAt 2 (20, 20)
+        |> withVehicleAt 3 (30, 30)
+    let current =
+        defaultGame
+        |> withVehicleAt 1 (10, 10)
+        |> withVehicleAt 3 (30, 30)
+    let changes = delta previous current
+    match changes with
+    | [ VehicleRemoved vid ] -> Assert.Equal(2, vid)
+    | _ -> raise ChangeDetectionFailed
+    
+[<Fact>]
+let ``Should detect vehicle moved`` () =
+     let pp = (10, 10)
+     let cp = (20, 20)
+     let previous =
+        defaultGame
+        |> withVehicleAt 1 pp
+     let current =
+        defaultGame
+        |> withVehicleAt 1 cp
+     let changes = delta previous current
+     match changes with
+     | [ VehicleMoved(vid, prevHitBox, curHitBox) ] ->
+         Assert.Equal(01, vid)
+         Assert.Equal(pp, HitBox.topLeft prevHitBox)
+         Assert.Equal(cp, HitBox.topLeft curHitBox)
+     | _ -> raise ChangeDetectionFailed
+     
+[<Fact>]
+let ``Should detect vehicle health changed`` () =
+    let previous =
+        defaultGame
+        |> withVehicle 1 (10, 10) 9
+        |> withVehicle 2 (20, 20) 1
+    let current =
+        defaultGame
+        |> withVehicle 1 (10, 10) 8
+        |> withVehicle 2 (20, 20) 3
+    let changes = delta previous current
+    match changes with
+     | [ VehicleDamaged(id1, health1); VehicleHealed(id2, health2) ] ->
+         Assert.Equal(id1, 1)
+         Assert.Equal(health1, 8)
+         Assert.Equal(id2, 2)
+         Assert.Equal(health2, 3)
+     | _ -> raise ChangeDetectionFailed
+     
+[<Fact>]
+let ``Should detect bullet added`` () =
+    let previous =
+        defaultGame
+        |> withVehicleAt 1 (10, 10)
+    let current =
+        previous
+        |> applyCommand (Fire(1, Up))
+    let changes = delta previous current
+    match changes with
+    | [ BulletAdded b ] -> Assert.Equal(Up, b.dir)
+    | _ -> raise ChangeDetectionFailed
+    
+[<Fact>]
+let ``Should detect bullet moved`` () =
+    let previous =
+        defaultGame
+        |> withVehicleAt 1 (10, 10)
+        |> applyCommand (Fire(1, Up))
+    let current = tick [ Tick ] previous
+    let changes = delta previous current
+    match changes with
+    | [ BulletMoved(id, prevHitBox, curHitBox) ] ->
+        Assert.True(id > 0)
+        Assert.Equal(HitBox.topLeft prevHitBox, (10, 11))
+        Assert.Equal(HitBox.topLeft curHitBox, (10, 13))
+    | _ -> raise ChangeDetectionFailed    
