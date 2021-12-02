@@ -5,7 +5,7 @@ module ChangeDetection =
         | VehicleAdded of Vehicle
         | VehicleRemoved of VehicleId
         | VehicleMoved of VehicleId * HitBox * HitBox
-        | VehicleShaped of VehicleId * Reflection * Reflection
+        | VehicleShaped of VehicleId * HitBox * Reflection
         | VehicleDamaged of VehicleId * Health
         | VehicleHealed of VehicleId * Health
         | CrateAdded of Crate
@@ -26,7 +26,7 @@ module ChangeDetection =
                 let pl = List.length ps
                 let cl = List.length cs
                 if pl = cl then []
-                else [ VehicleShaped(pv.id, pv.shape, cv.shape) ]
+                else [ VehicleShaped(pv.id, cv.hitBox, cv.shape) ]
         let deltaVehicleHealth (pv:Vehicle) (cv:Vehicle) =
             let ph = Vehicle.health pv
             let ch = Vehicle.health cv

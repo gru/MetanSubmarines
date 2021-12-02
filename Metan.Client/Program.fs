@@ -1,6 +1,7 @@
 open System
 open MBrace.FsPickler
 open Metan
+open Metan
 open Metan.Core
 open Microsoft.AspNetCore.SignalR.Client
 open Metan.Core.ChangeDetection
@@ -14,16 +15,34 @@ let encode (bs:BinarySerializer) =
 let onAreaEvent (client:Submarines) (decode:byte[] -> AreaEvent) (data:byte[]) =
     let toClientHitBox (HitBox((tlx, tly), (brx, bry))) =
         ClientHitBox(tlx, tly, brx, bry)
+    let toCrateBonus = function
+        | HealthBonus _ -> CrateBonus.HealthBonus
+        | DamageBonus _ -> CrateBonus.DamageBonus
+        | ShapeBonus -> CrateBonus.ShapeBonus
+        | RandomBonus -> CrateBonus.RandomBonus
+    let toVehicleCellSize (Reflection sl) =
+        match List.length sl with
+        | 1 -> VehicleCellSize.One
+        | 2 -> VehicleCellSize.Two
+        | 3 -> VehicleCellSize.Three
+        | 4 -> VehicleCellSize.Four
+        | _ -> VehicleCellSize.Four
     let apply change =
         match change with
-        | VehicleAdded({ id = id; hitBox = hitBox; dmg = dmg }) ->
-            client.State.VehicleAdded(id, toClientHitBox hitBox , dmg)
+        | VehicleAdded({ id = id; hitBox = hitBox; dmg = dmg; shape = shape }) ->
+            let chb = toClientHitBox hitBox
+            let vcs = toVehicleCellSize shape
+            client.State.VehicleAdded(id, chb, dmg, vcs)
         | VehicleRemoved(id) ->
             client.State.VehicleRemoved(id)
         | VehicleMoved(id, _, hitBox) ->
             client.State.VehicleMoved(id, toClientHitBox hitBox)
-        | CrateAdded({ id = id; hitBox = hitBox }) ->
-            client.State.CrateAdded(id, toClientHitBox hitBox)
+        | VehicleShaped(id, hitBox, shape) ->
+            let chb = toClientHitBox hitBox
+            let vcs = toVehicleCellSize shape
+            client.State.VehicleShaped(id, chb, vcs)
+        | CrateAdded({ id = id; hitBox = hitBox; bonus = bonus }) ->
+            client.State.CrateAdded(id, toClientHitBox hitBox, toCrateBonus bonus)
         | CrateRemoved(id) ->
             client.State.CrateRemoved(id)
         | BulletAdded({ id = id; hitBox = hitBox }) ->

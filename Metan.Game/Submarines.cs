@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using static Metan.Constants;
@@ -30,8 +30,13 @@ namespace Metan
         public GameOptions Options { get; }
 
         public GameState State { get; private set; }
-
-        public bool Ready => State != null && GraphicsDevice != null;
+        
+        public GameResources Resources { get; private set; }
+        
+        public bool Ready => 
+            GraphicsDevice != null &&
+            Resources != null && 
+            State != null;
         
         public event EventHandler<KeyboardEvent> KeyboardEvent;
             
@@ -80,7 +85,7 @@ namespace Metan
             foreach (var (_, vehicle) in State.Vehicles)
             {
                 _spriteBatch.Draw(
-                    vehicle.Texture, 
+                    Resources.GetVehicleTexture(vehicle.CellSize), 
                     new Rectangle(vehicle.HitBox.TopLeft, vehicle.HitBox.Size),
                     Color.Chocolate);
             }
@@ -88,19 +93,21 @@ namespace Metan
             foreach (var (_, crate) in State.Crates)
             {
                 _spriteBatch.Draw(
-                    crate.Texture,
+                    Resources.CratesTexture,
                     new Rectangle(crate.HitBox.TopLeft, crate.HitBox.Size),
-                    Color.Aquamarine);
+                    Resources.GetCrateSprite(crate.Bonus),
+                    Color.Aqua);
             }
 
             foreach (var (_, bullet) in State.Bullets)
             {
-                var size = new Point(6, 6);
+                var size = new Point(BulletSize, BulletSize);
                 var topLeft = new Point(
-                    bullet.HitBox.TopLeft.X + 2, bullet.HitBox.TopLeft.Y + 2);
+                    bullet.HitBox.TopLeft.X + BulletBorder, 
+                    bullet.HitBox.TopLeft.Y + BulletBorder);
                 
                 _spriteBatch.Draw(
-                    bullet.Texture,
+                    Resources.BulletTexture,
                     new Rectangle(topLeft, size),
                     Color.Black);
             }
@@ -112,7 +119,8 @@ namespace Metan
         {
             _spriteBatch = new SpriteBatch(GraphicsDevice);
 
-            State = new GameState(new GameResources(GraphicsDevice));
+            State = new GameState();
+            Resources = new GameResources(Content, GraphicsDevice);
         }
 
         protected override void UnloadContent()
@@ -123,8 +131,6 @@ namespace Metan
         protected override void Dispose(bool disposing)
         {
             _spriteBatch.Dispose();
-            
-            State.Dispose();
             
             base.Dispose(disposing);
         }
@@ -185,15 +191,38 @@ namespace Metan
         
         public (Point tl, Point br) Deconstruct() 
             => (TopLeft, BottomRight);
+
+        public override string ToString()
+        {
+            return $"TL:{TopLeft};BR:{BottomRight};S:{Size}";
+        }
     }
 
-    public record ClientVehicle(int Id, ClientHitBox HitBox, int Damage, Texture2D Texture);
-    public record ClientCrate(int Id, ClientHitBox HitBox, Texture2D Texture);
-    public record ClientBullet(int Id, ClientHitBox HitBox, Texture2D Texture);
+    public record ClientVehicle(int Id, ClientHitBox HitBox, int Damage, VehicleCellSize CellSize);
+    public record ClientCrate(int Id, ClientHitBox HitBox, CrateBonus Bonus);
+    public record ClientBullet(int Id, ClientHitBox HitBox);
+
+    public enum CrateBonus
+    {
+        HealthBonus,
+        DamageBonus,
+        ShapeBonus,
+        RandomBonus
+    }
+
+    public enum VehicleCellSize
+    {
+        One, 
+        Two,
+        Three,
+        Four
+    }
     
     public static class Constants
     {
         public const int WorldCellSize = 10;
+        public const int BulletSize = 2;
+        public const int BulletBorder = (WorldCellSize - BulletSize) / 2;
     }
 
     public static class Functions
@@ -211,15 +240,8 @@ namespace Metan
             => new Point((br.X - tl.X + 1) * WorldCellSize, (br.Y - tl.Y + 1) * WorldCellSize);
     }
 
-    public class GameState : IDisposable
+    public class GameState
     {
-        private readonly GameResources _resources;
-
-        internal GameState(GameResources resources)
-        {
-            _resources = resources;
-        }
-
         public Dictionary<int, ClientVehicle> Vehicles { get; }
             = new Dictionary<int, ClientVehicle>();
 
@@ -231,105 +253,123 @@ namespace Metan
 
         public bool Initialized { get; set; }
         
-        public void VehicleAdded(int id, ClientHitBox hitBox, int damage) 
-            => Vehicles[id] = new ClientVehicle(id, hitBox, damage, _resources.VehicleTexture);
+        public void VehicleAdded(int id, ClientHitBox hitBox, int damage, VehicleCellSize cellSize) 
+            => Vehicles[id] = new ClientVehicle(id, hitBox, damage, cellSize);
 
         public void VehicleRemoved(int id)
             => Vehicles.Remove(id);
 
-        public void VehicleMoved(int id, ClientHitBox hitBox)
+        public void VehicleMoved(int id, ClientHitBox hitBox) 
+            => Vehicles.Set(id, vehicle => vehicle with { HitBox = hitBox });
+
+        public void VehicleShaped(int id, ClientHitBox hitBox, VehicleCellSize cellSize)
         {
-            using (new LapTime())
-                Vehicles.Set(id, vehicle => vehicle with { HitBox = hitBox });
-        } 
-        public void CrateAdded(int id, ClientHitBox hitBox)
-            => Crates[id] = new ClientCrate(id, hitBox, _resources.CrateTexture);
+            Vehicles.Set(id, vehicle => vehicle with { HitBox = hitBox, CellSize = cellSize });
+
+            Console.WriteLine(Vehicles[id].HitBox);
+        }
+
+        public void CrateAdded(int id, ClientHitBox hitBox, CrateBonus bonus)
+            => Crates[id] = new ClientCrate(id, hitBox, bonus);
 
         public void CrateRemoved(int id) 
             => Crates.Remove(id);
 
-        public void BulletAdded(int id, ClientHitBox hitBox)
-        {
-            using (new LapTime()) Bullets[id] = new ClientBullet(id, hitBox, _resources.BulletTexture);
-        }
+        public void BulletAdded(int id, ClientHitBox hitBox) 
+            => Bullets[id] = new ClientBullet(id, hitBox);
 
         public void BulletRemoved(int id)
             => Bullets.Remove(id);
 
         public void BulletMoved(int id, ClientHitBox hitBox)
             => Bullets.Set(id, bullet => bullet with { HitBox = hitBox });
-
-        public void Dispose()
-        {
-            _resources.Dispose();
-            
-            GC.SuppressFinalize(this);
-        }
     }
 
-    internal class GameResources : IDisposable
+    public class GameResources : IDisposable
     {
+        private readonly ContentManager _contentManager;
         private readonly GraphicsDevice _graphicsDevice;
+        
+        private Texture2D _cratesTexture;
+        private Texture2D _submarineOneCellTexture;
+        private Texture2D _submarineTwoCellTexture;
+        private Texture2D _submarineThreeCellTexture;
+        private Texture2D _submarineFourCellTexture;
 
-        public GameResources(GraphicsDevice graphicsDevice)
+        public GameResources(ContentManager contentManager, GraphicsDevice graphicsDevice)
         {
+            _contentManager = contentManager;
             _graphicsDevice = graphicsDevice;
 
             BulletTexture = CreateTexture();
-            VehicleTexture = CreateTexture();
-            CrateTexture = CreateTexture();
         }
         
         public Texture2D BulletTexture { get; }
 
-        public Texture2D VehicleTexture { get; }
+        public Texture2D SubmarineOneCellTexture 
+            => _submarineOneCellTexture ??= GetImageResource("submarine_1");
+        public Texture2D SubmarineTwoCellTexture 
+            => _submarineTwoCellTexture ??= GetImageResource("submarine_2");
+        public Texture2D SubmarineThreeCellTexture 
+            => _submarineThreeCellTexture ??= GetImageResource("submarine_3");
+        public Texture2D SubmarineFourCellTexture 
+            => _submarineFourCellTexture ??= GetImageResource("submarine_4");
+        public Texture2D CratesTexture 
+            => _cratesTexture ??= GetImageResource("crates");
 
-        public Texture2D CrateTexture { get; }
+        public Rectangle GetCrateSprite(CrateBonus bonus)
+        {
+            return bonus switch
+            {
+                CrateBonus.HealthBonus => new Rectangle(0, 0, 10, 10),
+                CrateBonus.DamageBonus => new Rectangle(10, 0, 10, 10),
+                CrateBonus.ShapeBonus => new Rectangle(20, 0, 10, 10),
+                CrateBonus.RandomBonus => new Rectangle(30, 0, 10, 10),
+                _ => throw new ArgumentOutOfRangeException(nameof(bonus), bonus, null)
+            };
+        }
 
+        public Texture2D GetVehicleTexture(VehicleCellSize size)
+        {
+            return size switch
+            {
+                VehicleCellSize.One => SubmarineOneCellTexture,
+                VehicleCellSize.Two => SubmarineTwoCellTexture,
+                VehicleCellSize.Three => SubmarineThreeCellTexture,
+                VehicleCellSize.Four => SubmarineFourCellTexture,
+                _ => throw new ArgumentOutOfRangeException(nameof(size), size, null)
+            };
+        }
+        
         private Texture2D CreateTexture()
         {
             var texture2D = new Texture2D(_graphicsDevice, 1, 1);
             texture2D.SetData(new[] { Color.White });
             return texture2D;
         }
+
+        private Texture2D GetImageResource(string name)
+            => _contentManager.Load<Texture2D>($"Content/images/{name}");
         
         public void Dispose()
         {
             BulletTexture?.Dispose();
-            VehicleTexture?.Dispose();
-            CrateTexture?.Dispose();
+            SubmarineOneCellTexture?.Dispose();
         }
+    }
+    
+    public class GameOptions
+    {
+        public bool ShowHitBox { get; set; }
     }
     
     internal static class DictionaryEx
     {
-        public static TValue Peek<TKey, TValue>(this Dictionary<TKey, TValue> dictionary, TKey key)
-        {
-            if (dictionary.TryGetValue(key, out var value))
-                dictionary.Remove(key);
-
-            return value;
-        }
-        
         public static void Set<TKey, TValue>(this Dictionary<TKey, TValue> dictionary, TKey key, Func<TValue, TValue> update)
         {
             if (dictionary.TryGetValue(key, out var value))
                 dictionary[key] = update(value);
         }
-
-        public static TValue[] PeekAll<TKey, TValue>(this Dictionary<TKey, TValue> dictionary)
-        {
-            var result = dictionary.Values.ToArray();
-
-            dictionary.Clear();
-            
-            return result;
-        }
-    }
-
-    public class GameOptions
-    {
-        public bool ShowHitBox { get; set; }
     }
 
     internal class LapTime : IDisposable

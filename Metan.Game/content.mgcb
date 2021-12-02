@@ -1,0 +1,65 @@
+
+#----------------------------- Global Properties ----------------------------#
+
+/outputDir:bin
+/intermediateDir:obj
+/platform:Windows
+/config:
+/profile:Reach
+/compress:False
+
+#-------------------------------- References --------------------------------#
+
+
+#---------------------------------- Content ---------------------------------#
+
+#begin Sources/crates.psd
+/importer:TextureImporter
+/processor:TextureProcessor
+/build:Sources/crates.psd
+
+#begin Content/images/crates.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/build:Content/images/crates.png
+
+#begin Sources/submarine_4.psd
+/importer:TextureImporter
+/processor:TextureProcessor
+/build:Sources/submarine_4.psd
+
+#begin Sources/submarine_1.psd
+/importer:TextureImporter
+/processor:TextureProcessor
+/build:Sources/submarine_1.psd
+
+#begin Sources/submarine_3.psd
+/importer:TextureImporter
+/processor:TextureProcessor
+/build:Sources/submarine_3.psd
+
+#begin Sources/submarine_2.psd
+/importer:TextureImporter
+/processor:TextureProcessor
+/build:Sources/submarine_2.psd
+
+#begin Content/images/submarine_2.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/build:Content/images/submarine_2.png
+
+#begin Content/images/submarine_3.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/build:Content/images/submarine_3.png
+
+#begin Content/images/submarine_1.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/build:Content/images/submarine_1.png
+
+#begin Content/images/submarine_4.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/build:Content/images/submarine_4.png
+

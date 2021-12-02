@@ -341,15 +341,19 @@ module Crate =
         | HealthBonus health ->
             let vrx = Projection.project c.hitBox c.shape
                       |> Projection.reflect v.hitBox
-                      |> Reflection.applyMatched (heal health) v.shape 
-            Some { v with shape = vrx }
+                      |> Reflection.applyMatched (heal health) v.shape
+            let pr = Projection.project v.hitBox vrx
+            let hb = Projection.toHitBox pr
+            Some { v with hitBox = hb; shape = vrx }
         | DamageBonus dmg ->
             let vrx = Projection.project c.hitBox c.shape
                       |> Projection.reflect v.hitBox
                       |> Reflection.applyMatched (damage dmg) v.shape
                       |> Reflection.filterAll dead
                       |> Shape.shrink
-            Some { v with shape = vrx }
+            let pr = Projection.project v.hitBox vrx
+            let hb = Projection.toHitBox pr
+            Some { v with hitBox = hb; shape = vrx }
         | ShapeBonus ->
             let sp = Shape.grow v.shape
             let pr = Projection.project v.hitBox sp
