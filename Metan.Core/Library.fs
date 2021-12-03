@@ -1,7 +1,6 @@
 ﻿namespace Metan.Core
 
 open System
-open System.Collections.Generic
 open System.Threading
 
 [<AutoOpen>]

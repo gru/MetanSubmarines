@@ -152,32 +152,37 @@ module Actors =
             match command with
             | AreaCommand Tick ->
                 let gx = Game.tick rnd (Tick :: area.commands) game
-                let ref = select me "client_*"
-                ref <! State (game, gx)
+                let all = select me "client_*"
+                all <! State (game, gx)
                 return! loop({ area with commands = [] }) gx
             | AreaCommand cmd ->
                 return! loop({ area with commands = cmd::area.commands }) game
             | UserCommand (cnn, Join) ->
                 let id, ax = area |> Area.addUser cnn
                 let gx = game |> Game.addVehicle rnd id
-                let ref = props (client ep)
+                let usr = props (client ep)
                           |> spawn me $"client_{id}"
-                ref <! UserEvent (cnn, UserJoined id)
+                usr <! UserEvent (cnn, UserJoined id)
+                let all = select me "client_*"
+                all <! State (game, gx)
                 return! loop(ax) gx
             | UserCommand (cnn, Leave id) ->
                 let idx, ax = area |> Area.remUser cnn id
                 let gx = game |> Game.remVehicle idx
-                let ref = select me $"client_{idx}"
-                ref <! UserEvent (cnn, UserLeft)
+                let usr = select me $"client_{idx}"
+                usr <! UserEvent (cnn, UserLeft)
+                let all = select me "client_*"
+                all <! State (game, gx)
                 return! if gx.vehicles |> List.isEmpty
                     then awaiting(ax) gx
                     else loop(ax) gx
             | JoinBot ->
                 let id, ax = area |> Area.addUser ""
                 let gx = game |> Game.addVehicle rnd id
-                let ref = props bot
-                          |> spawn me $"client_{id}"
-                ref <! UserEvent ("", UserJoined id)
+                let bot = spawn me $"client_{id}" (props bot)
+                bot <! UserEvent ("", UserJoined id)
+                let all = select me "client_*"
+                all <! State (game, gx)
                 return! loop(ax) gx
         }
         awaiting Area.empty (Game.empty (Size(79, 47)))

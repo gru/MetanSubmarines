@@ -142,6 +142,8 @@ let main argv =
                     callGameCommand (Fire (client.Id, Left))
                 | UserEvent.FireRight ->
                     callGameCommand (Fire (client.Id, Right))
+                | UserEvent.SpawnBot ->
+                    callAreaCommand JoinBot
                 | UserEvent.ShowHitBox ->
                     client.Options.ShowHitBox <- true
                 | UserEvent.HideHitBox ->

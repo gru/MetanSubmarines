@@ -71,6 +71,9 @@ namespace Metan
             if (keyboardState.IsKeyDown(Keys.Escape))
                 OnKeyboardEvent(UserEvent.Leave);
             
+            if (keyboardState.IsKeyDown(Keys.B))
+                OnKeyboardEvent(UserEvent.SpawnBot);
+            
             base.Update(gameTime);
         }
 
@@ -262,12 +265,8 @@ namespace Metan
         public void VehicleMoved(int id, ClientHitBox hitBox) 
             => Vehicles.Set(id, vehicle => vehicle with { HitBox = hitBox });
 
-        public void VehicleShaped(int id, ClientHitBox hitBox, VehicleCellSize cellSize)
-        {
-            Vehicles.Set(id, vehicle => vehicle with { HitBox = hitBox, CellSize = cellSize });
-
-            Console.WriteLine(Vehicles[id].HitBox);
-        }
+        public void VehicleShaped(int id, ClientHitBox hitBox, VehicleCellSize cellSize) 
+            => Vehicles.Set(id, vehicle => vehicle with { HitBox = hitBox, CellSize = cellSize });
 
         public void CrateAdded(int id, ClientHitBox hitBox, CrateBonus bonus)
             => Crates[id] = new ClientCrate(id, hitBox, bonus);
