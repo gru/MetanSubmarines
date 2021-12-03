@@ -1,7 +1,6 @@
 open System
 open MBrace.FsPickler
 open Metan
-open Metan
 open Metan.Core
 open Microsoft.AspNetCore.SignalR.Client
 open Metan.Core.ChangeDetection
@@ -45,8 +44,8 @@ let onAreaEvent (client:Submarines) (decode:byte[] -> AreaEvent) (data:byte[]) =
             client.State.CrateAdded(id, toClientHitBox hitBox, toCrateBonus bonus)
         | CrateRemoved(id) ->
             client.State.CrateRemoved(id)
-        | BulletAdded({ id = id; hitBox = hitBox }) ->
-            client.State.BulletAdded(id, toClientHitBox hitBox)
+        | BulletAdded({ id = id; hitBox = hitBox; spd = speed }) ->
+            client.State.BulletAdded(id, toClientHitBox hitBox, speed)
         | BulletRemoved(id) ->
             client.State.BulletRemoved(id)
         | BulletMoved(id, _, hitBox) ->
@@ -65,6 +64,10 @@ let onAreaEvent (client:Submarines) (decode:byte[] -> AreaEvent) (data:byte[]) =
                     apply change
                     
                 client.State.Initialized <- true
+            if current.time > previous.time
+            then
+                client.State.Tick()
+            else ()
         else ()
     | UserEvent (_, UserJoined id) ->
         client.Id <- id

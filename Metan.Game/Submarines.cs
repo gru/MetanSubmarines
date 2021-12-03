@@ -18,8 +18,6 @@ namespace Metan
         
         public Submarines()
         {
-            TargetElapsedTime = TimeSpan.FromSeconds(0.1);
-
             _graphicsDeviceManager = new GraphicsDeviceManager(this);
             
             Options = new GameOptions();
@@ -73,7 +71,7 @@ namespace Metan
             
             if (keyboardState.IsKeyDown(Keys.B))
                 OnKeyboardEvent(UserEvent.SpawnBot);
-            
+
             base.Update(gameTime);
         }
 
@@ -85,11 +83,18 @@ namespace Metan
 
             _spriteBatch.Begin();
             
+            var delta = gameTime.ElapsedGameTime.TotalMilliseconds;
+            
             foreach (var (_, vehicle) in State.Vehicles)
             {
+                var current = vehicle.Position;
+                var desired = vehicle.HitBox.TopLeft;
+
+                vehicle.Position = Move(current, desired, delta);
+                
                 _spriteBatch.Draw(
                     Resources.GetVehicleTexture(vehicle.CellSize), 
-                    new Rectangle(vehicle.HitBox.TopLeft, vehicle.HitBox.Size),
+                    new Rectangle(vehicle.Position, vehicle.HitBox.Size),
                     Color.Chocolate);
             }
 
@@ -104,10 +109,15 @@ namespace Metan
 
             foreach (var (_, bullet) in State.Bullets)
             {
+                var current = bullet.Position;
+                var desired = bullet.HitBox.TopLeft;
+
+                bullet.Position = Move(current, desired, delta * bullet.Speed);
+                
                 var size = new Point(BulletSize, BulletSize);
                 var topLeft = new Point(
-                    bullet.HitBox.TopLeft.X + BulletBorder, 
-                    bullet.HitBox.TopLeft.Y + BulletBorder);
+                    bullet.Position.X + BulletBorder, 
+                    bullet.Position.Y + BulletBorder);
                 
                 _spriteBatch.Draw(
                     Resources.BulletTexture,
@@ -140,6 +150,9 @@ namespace Metan
         
         private void OnKeyboardEvent(UserEvent evt)
         {
+            if (!State.SentCommands.Add(evt)) 
+                return;
+
             Console.WriteLine(evt);
             
             var handler = KeyboardEvent;
@@ -201,9 +214,53 @@ namespace Metan
         }
     }
 
-    public record ClientVehicle(int Id, ClientHitBox HitBox, int Damage, VehicleCellSize CellSize);
-    public record ClientCrate(int Id, ClientHitBox HitBox, CrateBonus Bonus);
-    public record ClientBullet(int Id, ClientHitBox HitBox);
+    public class ClientVehicle
+    {
+        public ClientVehicle(int id, Point position, ClientHitBox hitBox, int damage, VehicleCellSize cellSize)
+        {
+            Id = id;
+            Position = position;
+            HitBox = hitBox;
+            Damage = damage;
+            CellSize = cellSize;
+        }
+
+        public int Id { get; }
+        public Point Position { get; set; }
+        public ClientHitBox HitBox { get; set; }
+        public int Damage { get; set; }
+        public VehicleCellSize CellSize { get; set; }
+    }
+
+    public class ClientCrate
+    {
+        public ClientCrate(int id, ClientHitBox hitBox, CrateBonus bonus)
+        {
+            Id = id;
+            HitBox = hitBox;
+            Bonus = bonus;
+        }
+
+        public int Id { get; set; }
+        public ClientHitBox HitBox { get; set; }
+        public CrateBonus Bonus { get; set; }
+    }
+
+    public class ClientBullet
+    {
+        public ClientBullet(int id, Point position, ClientHitBox hitBox, int speed)
+        {
+            Id = id;
+            Position = position;
+            Speed = speed;
+            HitBox = hitBox;
+        }
+
+        public int Id { get; set; }
+        public Point Position { get; set; }
+        public ClientHitBox HitBox { get; set; }
+        public int Speed { get; set; }        
+    }
 
     public enum CrateBonus
     {
@@ -226,6 +283,7 @@ namespace Metan
         public const int WorldCellSize = 10;
         public const int BulletSize = 2;
         public const int BulletBorder = (WorldCellSize - BulletSize) / 2;
+        public const double SpeedFactor = 0.15;
     }
 
     public static class Functions
@@ -241,10 +299,43 @@ namespace Metan
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Point ToGameSize(Point br, Point tl)
             => new Point((br.X - tl.X + 1) * WorldCellSize, (br.Y - tl.Y + 1) * WorldCellSize);
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Point Move(Point current, Point desired, double delta)
+        {
+            return new Point(
+                Move(current.X, desired.X, delta),
+                Move(current.Y, desired.Y, delta));
+        }
+
+        private static int Move(int current, int desired, double delta)
+        {
+            if (current == desired)
+                return desired;
+            
+            var diffX = Math.Abs(current - desired);
+            var value = (int)(SpeedFactor * delta);
+            if (value > diffX)
+            {
+                current = desired;
+            }
+            else
+            {
+                if (current < desired)
+                    current += value;
+                else
+                    current -= value;    
+            }
+
+            return current;
+        }
     }
 
     public class GameState
     {
+        public HashSet<UserEvent> SentCommands { get; }
+            = new HashSet<UserEvent>();
+
         public Dictionary<int, ClientVehicle> Vehicles { get; }
             = new Dictionary<int, ClientVehicle>();
 
@@ -257,16 +348,16 @@ namespace Metan
         public bool Initialized { get; set; }
         
         public void VehicleAdded(int id, ClientHitBox hitBox, int damage, VehicleCellSize cellSize) 
-            => Vehicles[id] = new ClientVehicle(id, hitBox, damage, cellSize);
+            => Vehicles[id] = new ClientVehicle(id, hitBox.TopLeft, hitBox, damage, cellSize);
 
         public void VehicleRemoved(int id)
             => Vehicles.Remove(id);
 
-        public void VehicleMoved(int id, ClientHitBox hitBox) 
-            => Vehicles.Set(id, vehicle => vehicle with { HitBox = hitBox });
+        public void VehicleMoved(int id, ClientHitBox hitBox)
+            => Vehicles.Set(id, v => v.HitBox = hitBox);
 
-        public void VehicleShaped(int id, ClientHitBox hitBox, VehicleCellSize cellSize) 
-            => Vehicles.Set(id, vehicle => vehicle with { HitBox = hitBox, CellSize = cellSize });
+        public void VehicleShaped(int id, ClientHitBox hitBox, VehicleCellSize cellSize)
+            => Vehicles.Set(id, v => { v.HitBox = hitBox; v.CellSize = cellSize; });
 
         public void CrateAdded(int id, ClientHitBox hitBox, CrateBonus bonus)
             => Crates[id] = new ClientCrate(id, hitBox, bonus);
@@ -274,14 +365,16 @@ namespace Metan
         public void CrateRemoved(int id) 
             => Crates.Remove(id);
 
-        public void BulletAdded(int id, ClientHitBox hitBox) 
-            => Bullets[id] = new ClientBullet(id, hitBox);
+        public void BulletAdded(int id, ClientHitBox hitBox, int speed) 
+            => Bullets[id] = new ClientBullet(id, hitBox.TopLeft, hitBox, speed);
 
         public void BulletRemoved(int id)
             => Bullets.Remove(id);
 
         public void BulletMoved(int id, ClientHitBox hitBox)
-            => Bullets.Set(id, bullet => bullet with { HitBox = hitBox });
+            => Bullets.Set(id, bullet => bullet.HitBox = hitBox);
+
+        public void Tick() => SentCommands.Clear();
     }
 
     public class GameResources : IDisposable
@@ -364,10 +457,9 @@ namespace Metan
     
     internal static class DictionaryEx
     {
-        public static void Set<TKey, TValue>(this Dictionary<TKey, TValue> dictionary, TKey key, Func<TValue, TValue> update)
+        public static void Set<TKey, TValue>(this Dictionary<TKey, TValue> dictionary, TKey key, Action<TValue> update)
         {
-            if (dictionary.TryGetValue(key, out var value))
-                dictionary[key] = update(value);
+            if (dictionary.TryGetValue(key, out var value)) update(value);
         }
     }
 

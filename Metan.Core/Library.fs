@@ -268,7 +268,7 @@ module Projection =
     let toHitBox proj =
         match proj with
         | Projection [] ->
-            raise EmptyProjection
+            HitBox.single (0, 0)
         | Projection [ s ] ->
             s
             |> Reflection.getPos
@@ -477,7 +477,9 @@ module Vehicle =
                       |> Reflection.applyMatched (damage b.dmg) m.shape
                       |> Reflection.filterAll dead
                       |> Shape.shrink
-            Some { m with shape = vrx } 
+            let pr = Projection.project m.hitBox vrx
+            let hb = Projection.toHitBox pr
+            Some { m with hitBox = hb; shape = vrx; } 
         | None -> Some m
         
     let takeCrate (rnd:Random) (s:Size) (dir:Direction) (cs:Crate list) (m:Vehicle) =
